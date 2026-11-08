@@ -1,4 +1,3 @@
-rm -f main_bot.py
 cat << 'EOF' > main_bot.py
 import os
 import json
