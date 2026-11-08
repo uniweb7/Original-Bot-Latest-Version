@@ -1,5 +1,4 @@
-rm -f bot_id_switch.py
-cat << 'EOF' > bot_id_switch.py
+
 import os
 import json
 import time
@@ -783,5 +782,4 @@ def switch_to_target_id(target_id_index, total_ids, current_id_index=None, max_l
 
     print(f" [✔] [ID SWITCH COMPLETE in {sw_dur:.1f}s] Now active on ID #{target_id_index} / {total_ids} [{role_str}] ('{report_name}')!\n")
     return True
-EOF
-echo "✔ Bot v8 - Part 3/5 (bot_id_switch.py) Complete & Updated!"
+
