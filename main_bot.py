@@ -1,4 +1,4 @@
-cat << 'EOF' > main_bot.py
+
 import os
 import json
 import time
@@ -650,5 +650,5 @@ def main_loop():
 
 if __name__ == "__main__":
     main_loop()
-EOF
+
 python -m py_compile bot_tools.py bot_upgrade.py bot_id_switch.py bot_attack.py main_bot.py && echo "✔ Bot v8 - ALL 5 PARTS VERIFIED 100% OK! Run: python main_bot.py"
