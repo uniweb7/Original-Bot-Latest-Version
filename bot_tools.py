@@ -1,5 +1,4 @@
-rm -rf __pycache__ *.pyc
-cat << 'EOF' > bot_tools.py
+
 import sys
 import os
 import io
@@ -1773,5 +1772,3 @@ def classify_building_name_a14(raw_ocr_text):
     if len(alpha_only) >= 3:
         return "BUILDING", base_name
     return "UNKNOWN", base_name
-EOF
-python -m py_compile bot_tools.py && echo "✔ Part 1 (bot_tools.py) with Connection Lost Auto-Reload & 1-Hour Shutdown VERIFIED 100% OK!"
