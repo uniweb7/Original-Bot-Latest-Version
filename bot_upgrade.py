@@ -1,5 +1,4 @@
-rm -f bot_upgrade.py
-cat << 'EOF' > bot_upgrade.py
+
 import time
 import re
 import random
@@ -955,5 +954,4 @@ def run_a14_wall_upgrade_loop():
         zoom_out_village_a14(passes=2, reason="WALL UPGRADE RECOVERY")
         record_duration("upgrade", time.time() - upg_start_t)
         return bool(LAST_WALL_UPGRADED)
-EOF
-echo "✔ Bot v8 - Part 2/5 (bot_upgrade.py) Complete & Updated!"
+
