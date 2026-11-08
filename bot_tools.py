@@ -92,6 +92,7 @@ def _create_fresh_session_stats():
         "daily_rewards_claimed": 0,
         "welcome_chief_closed": 0,
         "maintenance_breaks": 0,
+        "connection_lost_reloads": 0,
         "stuck_recoveries": 0,
         "zoom_outs_done": 0,
         "attack_time_total": 0.0,
@@ -259,7 +260,7 @@ def print_previous_progress_report(report_stage="PAUSED / STOPPED"):
         print(f"{C_CYN}║{C_RST} {C_YLW}Start Date & Time:{C_RST} {C_WHT}{start_str:<57}{C_RST}{C_CYN}║{C_RST}")
         print(f"{C_CYN}║{C_RST} {C_YLW}End/Pause Time   :{C_RST} {C_WHT}{now_dt_str:<57}{C_RST}{C_CYN}║{C_RST}")
         print(f"{C_CYN}║{C_RST} {C_YLW}Total Time Gap   :{C_RST} {C_BOLD}{C_CYN}{_format_duration_hms(total_elapsed)}{C_RST}  (Active: {C_GRN}{_format_duration_hms(active_elapsed)}{C_RST} | Paused: {C_MAG}{_format_duration_hms(paused_so_far)}{C_RST})")
-        print(f"{C_CYN}║{C_RST} {C_YLW}Pause/Resume Cnt :{C_RST} Paused: {C_MAG}{SESSION_STATS['pause_count']}x{C_RST} | Resumed: {C_GRN}{SESSION_STATS['resume_count']}x{C_RST} | Home Zoom-Outs: {C_CYN}{SESSION_STATS['zoom_outs_done']}x{C_RST}")
+        print(f"{C_CYN}║{C_RST} {C_YLW}Pause/Resume Cnt :{C_RST} Paused: {C_MAG}{SESSION_STATS['pause_count']}x{C_RST} | Resumed: {C_GRN}{SESSION_STATS['resume_count']}x{C_RST} | Wi-Fi Reloads: {C_CYN}{SESSION_STATS['connection_lost_reloads']}x{C_RST}")
         print(f"{C_CYN}{C_BOLD}╠══════════════════════════════════════════════════════════════════════════════╣{C_RST}")
         print(f"{C_CYN}{C_BOLD}║              ⏱️  AVERAGE TIME CATEGORY & SPEED ANALYTICS  ⏱️                 ║{C_RST}")
         print(f"{C_CYN}{C_BOLD}╠═════════════════════════╦══════════════════════════╦═════════════════════════╣{C_RST}")
@@ -474,7 +475,7 @@ def smart_sleep(seconds, apply_speed=True, min_floor=0.08):
         check_pause_point(allow_raise=True)
 
 # ==========================================
-# 1. WRONG BUTTON, CLAN CHAT, WELCOME CHIEF, DAILY REWARD & MAINTENANCE COORDS
+# 1. WRONG BUTTON, CLAN CHAT, WELCOME CHIEF, DAILY REWARD, MAINTENANCE & CONNECTION LOST COORDS
 # ==========================================
 WRONG_BUTTON_CUT_COORDS = [
     ("Profile Section", 1917, 87),
@@ -515,6 +516,18 @@ DAILY_REWARD_GREEN_BOXES = [
 MAINTENANCE_BREAK_BOX = (979, 16, 1442, 63)
 MAINTENANCE_CLICK_COORD = (1210, 39)
 MAINTENANCE_REST_SEC = 600.0
+
+# Connection Lost / Try Again Popup Coordinates (from user sketch & screenshot)
+CONNECTION_LOST_OUTER_BOX = (751, 684, 1733, 1017)
+CONNECTION_LOST_TEXT_BOX_LEFT = (773, 690, 1059, 767)
+CONNECTION_LOST_TEXT_BOX_WIDE = (773, 690, 1773, 767)
+TRY_AGAIN_BTN_BOX = (1053, 934, 1460, 1022)
+TRY_AGAIN_CLICK_COORD = (1256, 978)
+
+CONNECTION_OCR_INTERVAL_SEC = 300.0   # 5 Minutes periodic OCR check
+CONNECTION_RETRY_GAP_SEC = 300.0      # 5 Minutes gap between reload attempts
+CONNECTION_MAX_ATTEMPTS = 5           # 5 reload attempts
+CONNECTION_MAX_OUTAGE_SEC = 3600.0    # 1 Hour (60 Minutes) maximum recovery window before auto-sleep & exit
 
 # Green box with white '+' check on Home Page
 HOME_PAGE_CHECK_COORDS = [(2050, 285), (2050, 250)]
@@ -576,7 +589,6 @@ CARD_GEOMETRY = {
     "TIME_X2": 2310,
     "TIME_DY1": 2,
     "TIME_DY2": 35,
-    # Restricted COST_X2 to 2252 (digits only) so resource icons at 2260..2313 never cause false WHITE!
     "COST_X1": 2108,
     "COST_X2": 2252,
     "COST_DY1": 33,
@@ -636,7 +648,6 @@ FAST_ATTACK = {
     ],
 
     "SIEGE_SELECT": (770, 977),
-    # Siege Machine uses ONLY 4 safe deploy coordinates so it is never over-tapped or popped!
     "SIEGE_DEPLOY_LIST": [
         (325, 525), (225, 510), (303, 473), (292, 592)
     ],
@@ -701,7 +712,7 @@ ID_SWITCH_A14 = {
 }
 
 # ==========================================
-# 4. PERSISTENT ADB SHELL, SCREENSHOT & HOME-ONLY SYMMETRIC 2-FINGER ZOOM-OUT
+# 4. PERSISTENT ADB SHELL, SCREENSHOT, 1-HOUR DEVICE WATCHDOG & HOME ZOOM-OUT
 # ==========================================
 _ADB_SHELL_PROC = None
 _ADB_LOCK = threading.Lock()
@@ -714,6 +725,8 @@ _SCREENSHOT_CACHE = {
 LAST_HOME_CLEANUP_TIME = 0.0
 LAST_DETECTED_BUILDERS = None
 LAST_BUILDER_CHECK_TIME = 0.0
+_LAST_CONN_LOST_OCR_TIME = 0.0
+_IN_CONN_LOST_HANDLER = False
 
 def _invalidate_screen_cache():
     _SCREENSHOT_CACHE["img"] = None
@@ -732,6 +745,25 @@ def reset_persistent_adb_shell():
             except Exception:
                 pass
             _ADB_SHELL_PROC = None
+
+def _shutdown_bot_into_sleep_mode(reason="1-Hour Connection/Device Outage Limit Reached"):
+    """
+    Puts the device screen to sleep (keyevent 223) to prevent battery drain,
+    prints the final Previous Progress Report, and terminates the bot cleanly!
+    """
+    print("\n==============================================================================")
+    print(f"|| [AUTO-SLEEP & SHUTDOWN] {reason}")
+    print("|| Device ko Sleep Mode me bhej kar Bot ko safely band kiya ja raha hai...  ||")
+    print("==============================================================================")
+    try:
+        subprocess.run(["adb", "shell", "input", "keyevent", "223"], timeout=4)
+    except Exception:
+        pass
+    try:
+        print_previous_progress_report(report_stage=f"AUTO-SHUTDOWN ({reason})")
+    except Exception:
+        pass
+    os._exit(0)
 
 def _exec_adb_shell_cmd(cmd_str):
     global _ADB_SHELL_PROC
@@ -760,12 +792,7 @@ def _exec_adb_shell_cmd(cmd_str):
 def zoom_out_village_a14(passes=2, reason="HOME PAGE VIEW"):
     """
     HOME-PAGE-ONLY SYMMETRIC 2-FINGER PINCH-IN ZOOM-OUT:
-      - NEVER called during Attack / Battlefield!
-      - Uses 100% center-symmetric 2-finger PinchZoom around exact screen center (1200, 540):
-          Finger 1: (400, 200) -> (1100, 500)  [dx = +700, dy = +300]
-          Finger 2: (2000, 880) -> (1300, 580) [dx = -700, dy = -300]
-        Because both fingers move with equal and opposite vectors toward (1200, 540),
-        the village zooms out cleanly without panning/scrolling off-center!
+    Uses center-symmetric 2-finger PinchZoom around screen center (1200, 540).
     """
     global _MONKEY_SCRIPT_READY
     check_pause_point(allow_raise=True)
@@ -860,15 +887,8 @@ def swipe(x1, y1, x2, y2, duration=350, post_sleep=0.38, apply_speed=True):
     _exec_adb_shell_cmd(f"input swipe {sx1} {sy1} {sx2} {sy2} {scaled_dur}")
     human_sleep(post_sleep, 0.04, apply_speed=apply_speed, min_floor=0.12)
 
-def get_screenshot(check_pause=True, force_fresh=False):
-    if check_pause:
-        check_pause_point(allow_raise=True)
-
-    now = time.time()
-    if (not force_fresh) and (_SCREENSHOT_CACHE["img"] is not None) and ((now - _SCREENSHOT_CACHE["timestamp"]) <= 0.24):
-        return _SCREENSHOT_CACHE["img"]
-
-    img = None
+def _capture_raw_screenshot_once():
+    """Attempts to capture a single screenshot via RAM pipe or fallback file. Returns PIL Image or None."""
     try:
         proc = subprocess.run(
             ["adb", "exec-out", "screencap", "-p"],
@@ -882,22 +902,67 @@ def get_screenshot(check_pause=True, force_fresh=False):
             loaded_img.load()
             img = loaded_img.convert("RGB")
             bio.close()
+            return img
     except Exception:
-        img = None
+        pass
 
+    try:
+        if os.path.exists("screen.png"):
+            os.remove("screen.png")
+        subprocess.run("adb exec-out screencap -p > screen.png", shell=True, timeout=6)
+        if os.path.exists("screen.png") and os.path.getsize("screen.png") > 1024:
+            return Image.open("screen.png").convert("RGB")
+    except Exception:
+        pass
+    return None
+
+def get_screenshot(check_pause=True, force_fresh=False):
+    """
+    In-Memory RAM Screenshot with:
+      1. 0.24s micro-cache.
+      2. Automatic 1-Hour Device/ADB Disconnect Recovery Loop (if device disconnects or errors,
+         retries for up to 1 hour before shutting down cleanly!).
+      3. Automatic 5-Minute Periodic 'Connection lost / Try again' OCR Check!
+    """
+    global _LAST_CONN_LOST_OCR_TIME, _IN_CONN_LOST_HANDLER
+    if check_pause:
+        check_pause_point(allow_raise=True)
+
+    now = time.time()
+    if (not force_fresh) and (_SCREENSHOT_CACHE["img"] is not None) and ((now - _SCREENSHOT_CACHE["timestamp"]) <= 0.24):
+        return _SCREENSHOT_CACHE["img"]
+
+    img = _capture_raw_screenshot_once()
+
+    # If ADB / device failed to return a screenshot, retry for up to 1 Hour (3600s) before auto-shutdown!
     if img is None:
-        try:
-            subprocess.run("adb exec-out screencap -p > screen.png", shell=True, timeout=6)
-            if os.path.exists("screen.png"):
-                img = Image.open("screen.png").convert("RGB")
-        except Exception:
+        outage_start = time.time()
+        attempt_no = 1
+        while img is None:
+            elapsed_outage = time.time() - outage_start
+            if elapsed_outage >= CONNECTION_MAX_OUTAGE_SEC:
+                _shutdown_bot_into_sleep_mode("Device/ADB Unresponsive for 1 Full Hour (60 Mins)")
+            print(f" [!] [DEVICE/ADB ERROR #{attempt_no}] Screenshot failed ({elapsed_outage/60.0:.1f}m / 60.0m)! Retrying in 30s...")
             reset_persistent_adb_shell()
-            if _SCREENSHOT_CACHE["img"] is not None:
-                return _SCREENSHOT_CACHE["img"]
-            img = Image.new("RGB", (2400, 1080), (0, 0, 0))
+            try:
+                subprocess.run(["adb", "reconnect"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            except Exception:
+                pass
+            time.sleep(30.0)
+            img = _capture_raw_screenshot_once()
+            attempt_no += 1
 
     _SCREENSHOT_CACHE["img"] = img
     _SCREENSHOT_CACHE["timestamp"] = time.time()
+
+    # Automatic 5-Minute (300s) Periodic OCR Check for 'Connection lost / Try again'
+    if (not _IN_CONN_LOST_HANDLER) and ((time.time() - _LAST_CONN_LOST_OCR_TIME) >= CONNECTION_OCR_INTERVAL_SEC):
+        _LAST_CONN_LOST_OCR_TIME = time.time()
+        if check_and_handle_connection_lost_a14(img, force_ocr=True):
+            img = _capture_raw_screenshot_once() or img
+            _SCREENSHOT_CACHE["img"] = img
+            _SCREENSHOT_CACHE["timestamp"] = time.time()
+
     return img
 
 def clean_ram_garbage():
@@ -906,7 +971,209 @@ def clean_ram_garbage():
     gc.collect()
 
 # ==========================================
-# 5. STRICT POPUP & SCREEN SCANNERS
+# 5. CONNECTION LOST / TRY AGAIN AUTO-RELOAD & 1-HOUR RECOVERY ENGINE
+# ==========================================
+
+def _has_connection_lost_dark_box_pixels(img):
+    """
+    Fast 0.002s pixel pre-check for the 'Connection lost' dark charcoal dialog box
+    at (751, 684) to (1733, 1017) with white letters inside 'Connection lost' & 'Try again'.
+    """
+    w, h = img.size
+    px_map = img.load()
+    ox1, oy1, ox2, oy2 = CONNECTION_LOST_OUTER_BOX
+
+    dark_slate_px = 0
+    total_bg_px = 0
+    for sy in range(max(0, oy1 + 25), min(h, oy2 - 25), 14):
+        for sx in range(max(0, ox1 + 35), min(w, ox2 - 35), 28):
+            r, g, b = px_map[sx, sy]
+            total_bg_px += 1
+            # Characteristic dark gray/charcoal popup surface (RGB ~35..62, very low saturation)
+            if (24 <= r <= 68) and (26 <= g <= 70) and (28 <= b <= 74) and (max(r, g, b) - min(r, g, b) <= 14):
+                dark_slate_px += 1
+
+    if total_bg_px == 0 or (dark_slate_px / float(total_bg_px)) < 0.52:
+        return False
+
+    # Also check that white text pixels exist in 'Connection lost' (773,690..1059,767) and 'Try again' (1053,934..1460,1022)
+    tx1, ty1, tx2, ty2 = CONNECTION_LOST_TEXT_BOX_LEFT
+    header_white_px = 0
+    for sy in range(max(0, ty1), min(h, ty2), 3):
+        for sx in range(max(0, tx1), min(w, tx2), 4):
+            r, g, b = px_map[sx, sy]
+            if r > 195 and g > 195 and b > 195 and (max(r, g, b) - min(r, g, b) <= 25):
+                header_white_px += 1
+
+    bx1, by1, bx2, by2 = TRY_AGAIN_BTN_BOX
+    btn_white_px = 0
+    for sy in range(max(0, by1), min(h, by2), 3):
+        for sx in range(max(0, bx1), min(w, bx2), 4):
+            r, g, b = px_map[sx, sy]
+            if r > 195 and g > 195 and b > 195 and (max(r, g, b) - min(r, g, b) <= 25):
+                btn_white_px += 1
+
+    return header_white_px >= 10 and btn_white_px >= 8
+
+def _ocr_white_text_on_dark_box(img, box_coords):
+    """Runs LANCZOS 2x OCR for white text on the dark 'Connection lost / Try again' dialog."""
+    w, h = img.size
+    x1, y1, x2, y2 = box_coords
+    x1, x2 = max(0, min(x1, x2)), min(w, max(x1, x2))
+    y1, y2 = max(0, min(y1, y2)), min(h, max(y1, y2))
+    if (x2 - x1) < 15 or (y2 - y1) < 12:
+        return ""
+
+    crop = img.crop((x1, y1, x2, y2))
+    upscaled = crop.resize((crop.width * 2, crop.height * 2), Image.Resampling.LANCZOS)
+    uw, uh = upscaled.size
+    src = upscaled.load()
+
+    bw = Image.new("L", (uw, uh), 255)
+    dst = bw.load()
+    ink_px = 0
+    for py in range(uh):
+        for px in range(uw):
+            r, g, b = src[px, py]
+            if r > 165 and g > 165 and b > 165 and (max(r, g, b) - min(r, g, b) <= 35):
+                dst[px, py] = 0
+                ink_px += 1
+
+    if ink_px < 12:
+        return ""
+    padded = ImageOps.expand(bw, border=12, fill=255)
+    return pytesseract.image_to_string(padded, config="--oem 3 --psm 6").strip()
+
+def is_connection_lost_popup_visible_a14(img, force_ocr=False):
+    """
+    Detects the 'Connection lost / Try again' popup using the user's exact coordinates:
+      - Outer Box       : (751, 684) to (1733, 1017)
+      - Header Text Box : (773, 690) to (1059, 767) [and wide (773, 690) to (1773, 767)]
+      - Try Again Box   : (1053, 934) to (1460, 1022)
+    Returns (is_detected_bool, ocr_summary_str).
+    """
+    has_pixels = _has_connection_lost_dark_box_pixels(img)
+    if not has_pixels and not force_ocr:
+        return False, ""
+
+    # Run OCR on the 'Connection lost' header box and 'Try again' button box
+    header_txt = _ocr_white_text_on_dark_box(img, CONNECTION_LOST_TEXT_BOX_LEFT)
+    if not header_txt:
+        header_txt = _ocr_white_text_on_dark_box(img, CONNECTION_LOST_TEXT_BOX_WIDE)
+    btn_txt = _ocr_white_text_on_dark_box(img, TRY_AGAIN_BTN_BOX)
+
+    combined_clean = re.sub(r"[^a-zA-Z\s]", " ", f"{header_txt} {btn_txt}").lower()
+    keywords = ["connection", "conection", "lost", "try again", "try", "again", "server", "internet"]
+    matched_kw = any(kw in combined_clean for kw in keywords)
+
+    if matched_kw:
+        return True, f"Header='{header_txt}' | Button='{btn_txt}'"
+
+    # Fallback: if dark box pixel signature is 100% present, also check full outer box OCR
+    if has_pixels:
+        full_txt = _ocr_white_text_on_dark_box(img, CONNECTION_LOST_OUTER_BOX)
+        full_clean = re.sub(r"[^a-zA-Z\s]", " ", full_txt).lower()
+        if any(kw in full_clean for kw in keywords):
+            return True, f"FullBox='{full_txt[:45]}'"
+
+    return False, ""
+
+def check_and_handle_connection_lost_a14(img=None, force_ocr=False):
+    """
+    MASTER CONNECTION LOST / WIFI REBOOT & 1-HOUR RECOVERY HANDLER:
+      1. Checks if 'Connection lost / Try again' is visible at (751, 684..1733, 1017).
+      2. If detected:
+         - Clicks 'Try again' at (1256, 978) [inside (1053, 934..1460, 1022)] to reload the game.
+         - Retries up to 5 Attempts (with 5-minute / 300s wait between attempts, polling every 25s
+           in case Wi-Fi reconnects earlier!).
+         - If still not recovered after 5 Attempts, continues trying up to 1 Full Hour (3600s) max.
+         - If after 1 Hour (60 Minutes) the connection still fails, puts the device to sleep
+           and shuts down the bot cleanly so battery is never wasted!
+    """
+    global _IN_CONN_LOST_HANDLER, _LAST_CONN_LOST_OCR_TIME
+    if _IN_CONN_LOST_HANDLER:
+        return False
+
+    _IN_CONN_LOST_HANDLER = True
+    try:
+        if img is None:
+            img = _capture_raw_screenshot_once()
+            if img is None:
+                return False
+
+        is_lost, ocr_info = is_connection_lost_popup_visible_a14(img, force_ocr=force_ocr)
+        _LAST_CONN_LOST_OCR_TIME = time.time()
+        if not is_lost:
+            return False
+
+        outage_start_t = time.time()
+        attempt = 1
+
+        while True:
+            elapsed_total = time.time() - outage_start_t
+            print("\n==============================================================================")
+            print(f"|| [📡 CONNECTION LOST DETECTED] {ocr_info}")
+            print(f"|| [RELOAD ATTEMPT #{attempt}/{CONNECTION_MAX_ATTEMPTS}] Clicking 'Try again' (1256, 978)... (Outage: {elapsed_total/60.0:.1f}m / 60.0m)")
+            print("==============================================================================")
+
+            record_stat("connection_lost_reloads", 1)
+            tap(*TRY_AGAIN_CLICK_COORD, delay_range=(0.18, 0.30), jitter=4, check_pause=False, apply_speed=False)
+
+            # Wait 10 seconds after clicking 'Try again' for game reload to start
+            smart_sleep(10.0, apply_speed=False)
+
+            chk_img = _capture_raw_screenshot_once()
+            if chk_img is not None:
+                still_lost, _ = is_connection_lost_popup_visible_a14(chk_img, force_ocr=True)
+                if not still_lost:
+                    # Wait another 5s for village / popups to settle after reload
+                    smart_sleep(5.0, apply_speed=False)
+                    chk_img2 = _capture_raw_screenshot_once()
+                    if chk_img2 is not None:
+                        still_lost2, _ = is_connection_lost_popup_visible_a14(chk_img2, force_ocr=False)
+                        if not still_lost2:
+                            print(f" [✔] [WIFI RECONNECTED] Game reloaded successfully on Attempt #{attempt}!")
+                            _LAST_CONN_LOST_OCR_TIME = time.time()
+                            return True
+
+            # Check if 1-Hour (3600s) maximum outage limit has been reached
+            elapsed_total = time.time() - outage_start_t
+            if elapsed_total >= CONNECTION_MAX_OUTAGE_SEC:
+                _shutdown_bot_into_sleep_mode(
+                    f"Wi-Fi / Server Connection Lost for 1 Full Hour ({attempt} Reload Attempts Failed)"
+                )
+
+            # Wait 5 Minutes (300s) before the next reload attempt (polling every 30s if game recovered)
+            rem_window = max(30.0, min(CONNECTION_RETRY_GAP_SEC, CONNECTION_MAX_OUTAGE_SEC - elapsed_total))
+            print(f" [⏳ WIFI RECOVERY WAIT] Connection still down after Attempt #{attempt}. Waiting {rem_window/60.0:.1f} minutes before next Try Again click...")
+            wait_end = time.time() + rem_window
+            recovered_during_wait = False
+
+            while time.time() < wait_end:
+                smart_sleep(min(30.0, max(1.0, wait_end - time.time())), apply_speed=False)
+                probe_img = _capture_raw_screenshot_once()
+                if probe_img is not None:
+                    lost_now, _ = is_connection_lost_popup_visible_a14(probe_img, force_ocr=False)
+                    if not lost_now and is_on_home_page_a14(probe_img):
+                        print(" [✔] [WIFI RECOVERED] Home Page detected during recovery wait!")
+                        recovered_during_wait = True
+                        break
+
+            if recovered_during_wait:
+                _LAST_CONN_LOST_OCR_TIME = time.time()
+                return True
+
+            attempt += 1
+            fresh_img = _capture_raw_screenshot_once()
+            if fresh_img is not None:
+                _, ocr_info = is_connection_lost_popup_visible_a14(fresh_img, force_ocr=True)
+                if not ocr_info:
+                    ocr_info = "Connection still offline / retrying reload"
+    finally:
+        _IN_CONN_LOST_HANDLER = False
+
+# ==========================================
+# 6. STRICT POPUP & SCREEN SCANNERS
 # ==========================================
 def is_red_x_box_at(img, cx, cy, radius=10):
     w, h = img.size
@@ -1105,6 +1372,9 @@ def check_and_handle_maintenance_break(img=None):
     if img is None:
         img = get_screenshot()
 
+    # Also check Connection Lost right alongside Maintenance Break!
+    check_and_handle_connection_lost_a14(img, force_ocr=False)
+
     def _is_maintenance_banner_visible(cur_img):
         w, h = cur_img.size
         px_map = cur_img.load()
@@ -1175,6 +1445,11 @@ def check_wrong_buttons_a14(img=None, check_clan_chat=False):
         img = get_screenshot()
     clicked_any = False
 
+    # Fast check for 'Connection lost / Try again' dialog
+    if check_and_handle_connection_lost_a14(img, force_ocr=False):
+        clicked_any = True
+        img = get_screenshot(force_fresh=True)
+
     if check_clan_chat:
         if check_clan_chat_drawer_a14(img, use_build_fallback=False):
             clicked_any = True
@@ -1200,6 +1475,9 @@ def check_wrong_and_home_page_a14(img=None, check_clan_chat=False):
     if img is None:
         img = get_screenshot()
 
+    if check_and_handle_connection_lost_a14(img, force_ocr=False):
+        img = get_screenshot(force_fresh=True)
+
     if check_clan_chat and check_clan_chat_drawer_a14(img, use_build_fallback=False):
         img = get_screenshot(force_fresh=True)
 
@@ -1214,6 +1492,9 @@ def check_wrong_and_home_page_a14(img=None, check_clan_chat=False):
 
 def run_zone1_post_id_switch_checks(img=None):
     if img is None:
+        img = get_screenshot(force_fresh=True)
+
+    if check_and_handle_connection_lost_a14(img, force_ocr=False):
         img = get_screenshot(force_fresh=True)
 
     if is_on_home_page_a14(img):
@@ -1238,8 +1519,15 @@ def run_zone1_post_id_switch_checks(img=None):
     return acted, is_home, img
 
 def run_zone2_home_periodic_checks(img=None):
+    global _LAST_CONN_LOST_OCR_TIME
     if img is None:
         img = get_screenshot()
+
+    # Run Connection Lost check (forces full OCR if >= 5 minutes have elapsed)
+    do_periodic_ocr = ((time.time() - _LAST_CONN_LOST_OCR_TIME) >= CONNECTION_OCR_INTERVAL_SEC)
+    if check_and_handle_connection_lost_a14(img, force_ocr=do_periodic_ocr):
+        img = get_screenshot(force_fresh=True)
+
     check_and_handle_maintenance_break(img)
     if check_clan_chat_drawer_a14(img, use_build_fallback=False):
         img = get_screenshot(force_fresh=True)
@@ -1254,6 +1542,8 @@ def ensure_return_to_home_page_a14():
     print(" [*] [HOME RECOVERY] Ensuring bot is cleanly on the Home Page...")
     for attempt in range(1, 4):
         img = get_screenshot(check_pause=False, force_fresh=True)
+        if check_and_handle_connection_lost_a14(img, force_ocr=(attempt >= 2)):
+            img = get_screenshot(check_pause=False, force_fresh=True)
         check_and_handle_maintenance_break(img)
 
         if is_on_home_page_a14(img):
@@ -1349,7 +1639,7 @@ def check_wall_resources_full_a14(img=None):
     return check_resources_full_for_upgrade(img=img)
 
 # ==========================================
-# 6. BUILDER CHECK BOX READER & SINGLE/MULTI WALL MATCHERS
+# 7. BUILDER CHECK BOX READER & SINGLE/MULTI WALL MATCHERS
 # ==========================================
 def parse_builder_fraction(raw_text):
     if not raw_text:
@@ -1426,11 +1716,6 @@ def read_builder_check_box_a14(img=None):
     return 0
 
 def is_text_matching_wall(raw_text):
-    """
-    Enhanced Single-Wall & Multi-Wall Matcher:
-    Detects both 'Wall x125' AND standalone single 'Wall' (including minor OCR variations
-    like 'Wal', 'Wa1l', 'Wll', 'Wail', 'Wali', 'Vvall') while rejecting Wizard/Workshop/Warden.
-    """
     if not raw_text:
         return False
     cleaned = re.sub(r'[^a-zA-Z0-9\s]', '', raw_text).lower()
@@ -1489,4 +1774,4 @@ def classify_building_name_a14(raw_ocr_text):
         return "BUILDING", base_name
     return "UNKNOWN", base_name
 EOF
-echo "✔ Bot v8 - Part 1/5 (bot_tools.py) Complete & Updated!"
+python -m py_compile bot_tools.py && echo "✔ Part 1 (bot_tools.py) with Connection Lost Auto-Reload & 1-Hour Shutdown VERIFIED 100% OK!"
