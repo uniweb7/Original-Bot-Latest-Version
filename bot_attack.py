@@ -1,5 +1,4 @@
-rm -f bot_attack.py
-cat << 'EOF' > bot_attack.py
+
 import time
 import traceback
 import bot_tools
@@ -403,5 +402,4 @@ def execute_attack(is_first_attack=True):
     print(" [!] [3 ATTEMPTS FAILED] Running Full In-Game Home Recovery...")
     ensure_return_to_home_page_a14()
     return False
-EOF
-echo "✔ Bot v8 - Part 4/5 (bot_attack.py) Complete & Updated!"
+
