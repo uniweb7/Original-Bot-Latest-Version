@@ -171,27 +171,39 @@ ID_SWITCH_A14 = {
     "SUPERCELL_LOGO_BOX": (335, 502, 710, 518),
     "SUPERCELL_LOGO_OCR_BOX": (325, 465, 725, 550),
     "DIVIDER_X": 1118,
-    
+
+    "FIRST_CARD_BOX": (1158, 209, 2376, 434),
+    "PROFILE_ICON_BOX": (1187, 237, 1340, 386),
     "UNIQUE_ID_BOX": (1350, 236, 1940, 292),
+    "ID_NAME_BOX": (1190, 300, 1429, 353),
     "TOWN_HALL_BOX": (1348, 360, 1662, 396),
+    "LEAGUE_BOX": (2162, 265, 2335, 368),
+
     "CARD_HEIGHT": 225,
+    "CARD_STEP_Y": 242,
     "UNIQUE_ID_REL_Y1": 27,
     "UNIQUE_ID_REL_Y2": 83,
+    "ID_NAME_REL_Y1": 91,
+    "ID_NAME_REL_Y2": 144,
     "TH_REL_Y1": 151,
     "TH_REL_Y2": 187,
 
+    "ID_1_CLICK": (1763, 321),
+    "ID_2_CLICK": (1763, 563),
+    "ID_3_CLICK": (1763, 800),
+    "ID_4_CLICK": (1763, 1044),
     "ID_SLOTS": [
         (1763, 321),
         (1763, 563),
         (1763, 800),
         (1763, 1044)
     ],
-    
-    # 1050ms slow exact zero-inertia scroll
+
     "SCROLL_START": (1763, 1030),
     "SCROLL_END": (1763, 215),
     "SCROLL_DURATION_MS": 1050,
 
     "ID_INITIAL_WAIT_SEC": 3.5,
-    "ID_POLL_INTERVAL_SEC": 1.0
+    "ID_POLL_INTERVAL_SEC": 1.0,
+    "ID_LOAD_WAIT_SEC": 30.0
 }
