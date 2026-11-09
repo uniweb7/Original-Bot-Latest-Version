@@ -18,7 +18,6 @@ _IN_CONN_LOST_HANDLER = False
 LAST_HOME_CLEANUP_TIME = 0.0
 
 def is_on_home_page_a14(img=None):
-    """Fast center-pixel check for the Home Page Green '+' sign."""
     if img is None:
         img = bot_adb.get_screenshot()
     w, h = img.size
@@ -40,10 +39,6 @@ def is_on_home_page_a14(img=None):
     return False
 
 def check_wrong_buttons_a14(img=None, check_clan_chat=False):
-    """
-    Scans for 10 Wrong Buttons.
-    Anti-False-Positive: Skips if Home Page Green '+' is already visible.
-    """
     if img is None:
         img = bot_adb.get_screenshot()
     clicked_any = False
@@ -242,7 +237,6 @@ def _is_maintenance_banner_visible(img):
     if total_px == 0 or (yellow_px / total_px) < 0.25 or black_px < 12:
         return False, ""
     
-    # Needs bot_vision OCR logic directly or use the method
     txt = bot_vision._ocr_card_box_region(img, mx1, my1, mx2, my2, thresh=95, psm=7, whitelist="ABCDEFGHIJKLMNOPQRSTUVWXYZ").upper()
     if "MAINT" in txt or "TENANCE" in txt or "BREAK" in txt:
         return True, txt
@@ -387,6 +381,11 @@ def run_zone2_home_periodic_checks(img=None):
         if check_daily_reward_popup(img): img = bot_adb.get_screenshot(force_fresh=True)
         if check_wrong_buttons_a14(img, check_clan_chat=False): img = bot_adb.get_screenshot(force_fresh=True)
     return is_on_home_page_a14(img), img
+
+# FIXED: Added missing function `click_gold_storage_3_times`
+def click_gold_storage_3_times():
+    print(" [*] [HOME PAGE] Gold Storage Bar (2170, 63) par 3 baar click kar rahe hain...")
+    bot_adb.batch_tap_sequence([GOLD_STORAGE_BAR] * 3, inter_delay=0.04, jitter=2)
 
 def double_click_storage_bars():
     global LAST_HOME_CLEANUP_TIME
