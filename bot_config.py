@@ -5,13 +5,34 @@ import time
 
 BOT_SPEED_MULTIPLIER = 1.0
 
-SPEED_PRESETS = {
-    "A": 1.00, "B": 1.10, "C": 1.15, "D": 1.20, "E": 1.25,
-    "F": 1.30, "G": 1.35, "H": 1.40, "I": 1.45, "J": 1.50,
-    "K": 1.55, "L": 1.60, "M": 1.65, "N": 1.70, "O": 1.75,
-    "P": 1.80, "Q": 1.85, "R": 1.90, "S": 1.95, "T": 2.00,
-    "U": 2.05, "V": 2.10, "W": 2.15, "X": 2.20, "Y": 2.25
-}
+# यहाँ नाम सही करके ADVANCE_SPEED_TABLE कर दिया गया है
+ADVANCE_SPEED_TABLE = [
+    ("A", 1.00, "Standard Speed (Default - 100% As Coded)"),
+    ("B", 1.10, "1.10x Fast Speed"),
+    ("C", 1.15, "1.15x Fast Speed"),
+    ("D", 1.20, "1.20x Fast Speed"),
+    ("E", 1.25, "1.25x Fast Speed"),
+    ("F", 1.30, "1.30x Fast Speed"),
+    ("G", 1.35, "1.35x Fast Speed"),
+    ("H", 1.40, "1.40x Fast Speed"),
+    ("I", 1.45, "1.45x Fast Speed"),
+    ("J", 1.50, "1.50x Turbo Speed"),
+    ("K", 1.55, "1.55x Turbo Speed"),
+    ("L", 1.60, "1.60x Turbo Speed"),
+    ("M", 1.65, "1.65x Turbo Speed"),
+    ("N", 1.70, "1.70x Turbo Speed"),
+    ("O", 1.75, "1.75x Turbo Speed"),
+    ("P", 1.80, "1.80x Ultra Speed"),
+    ("Q", 1.85, "1.85x Ultra Speed"),
+    ("R", 1.90, "1.90x Ultra Speed"),
+    ("S", 1.95, "1.95x Ultra Speed"),
+    ("T", 2.00, "2.00x Ultra Speed"),
+    ("U", 2.05, "2.05x Extreme Speed"),
+    ("V", 2.10, "2.10x Extreme Speed"),
+    ("W", 2.15, "2.15x Extreme Speed"),
+    ("X", 2.20, "2.20x Extreme Speed"),
+    ("Y", 2.25, "2.25x Maximum Speed Limit")
+]
 
 def set_bot_speed_multiplier(mult):
     global BOT_SPEED_MULTIPLIER
