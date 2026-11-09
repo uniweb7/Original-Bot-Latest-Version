@@ -1,5 +1,5 @@
 # bot_report.py
-# Progress Report Generator, File Saver and Keyboard Listener
+# Progress Report Generator, File Saver and Keyboard Listener (V8 Original Engine)
 
 import os
 import json
@@ -8,9 +8,12 @@ import datetime
 import threading
 import select
 import sys
-import bot_config
-import bot_adb
 
+import bot_config
+
+# ==========================================
+# 1. REPORT SAVE & STATE GLOBALS
+# ==========================================
 REPORT_SAVE_FILE = "bot_last_report.json"
 _REPORT_LOCK = threading.Lock()
 
@@ -52,6 +55,7 @@ def _create_fresh_session_stats():
 SESSION_STATS = _create_fresh_session_stats()
 
 def reset_session_progress_report(mode_label="Active Mode"):
+    """Resets the report at the start of a new bot run."""
     global SESSION_STATS
     with _REPORT_LOCK:
         SESSION_STATS = _create_fresh_session_stats()
@@ -77,6 +81,7 @@ def _ensure_id_entry_unlocked(id_idx, id_name=None):
     return SESSION_STATS["per_id"][key]
 
 def set_report_active_id(id_idx, id_name=None, is_switch=False):
+    """Called after every successful ID Switch to track the new ID."""
     with _REPORT_LOCK:
         SESSION_STATS["active_id_index"] = int(id_idx)
         if id_name:
@@ -88,6 +93,7 @@ def set_report_active_id(id_idx, id_name=None, is_switch=False):
     _save_report_to_disk()
 
 def record_stat(event_key, amount=1, id_idx=None):
+    """Increments a counter in the report."""
     with _REPORT_LOCK:
         target_id = id_idx if id_idx is not None else SESSION_STATS["active_id_index"]
         entry = _ensure_id_entry_unlocked(target_id)
@@ -104,6 +110,7 @@ def record_stat(event_key, amount=1, id_idx=None):
     _save_report_to_disk()
 
 def record_duration(category, duration_sec):
+    """Tracks average execution times for attacks, upgrades, and ID switches."""
     dur = max(0.0, float(duration_sec))
     with _REPORT_LOCK:
         if category == "attack":
@@ -117,7 +124,12 @@ def record_duration(category, duration_sec):
             SESSION_STATS["id_switch_time_count"] += 1
     _save_report_to_disk()
 
+# ==========================================
+# 2. PERSISTENT DISK SAVING & READING
+# ==========================================
+
 def _save_report_to_disk():
+    """Saves the live JSON dict to disk so it can be viewed tomorrow."""
     try:
         with open(REPORT_SAVE_FILE, "w", encoding="utf-8") as f:
             json.dump(SESSION_STATS, f, indent=2, ensure_ascii=False)
@@ -125,19 +137,25 @@ def _save_report_to_disk():
         pass
 
 def print_saved_progress_report():
-    """Prints the previous session's report if it exists on disk, before starting a new run."""
+    """Prints the Previous Session's Report before the bot starts."""
     if not os.path.exists(REPORT_SAVE_FILE):
         return
     try:
         with open(REPORT_SAVE_FILE, "r", encoding="utf-8") as f:
             saved_stats = json.load(f)
+        
+        # Temporarily swap state to print the old report, then restore it
         global SESSION_STATS
-        old_stats = dict(SESSION_STATS)
+        current_live_stats = dict(SESSION_STATS)
         SESSION_STATS = saved_stats
         print_previous_progress_report(report_stage="PREVIOUS SESSION REPORT")
-        SESSION_STATS = old_stats
+        SESSION_STATS = current_live_stats
     except Exception:
         pass
+
+# ==========================================
+# 3. CONSOLE REPORT PRINTER (V8 STYLE)
+# ==========================================
 
 def _format_duration_hms(total_seconds):
     total_seconds = max(0, int(round(total_seconds)))
@@ -208,7 +226,7 @@ def print_previous_progress_report(report_stage="PAUSED / STOPPED"):
         pct_oth = max(0.0, 100.0 - (pct_atk + pct_upg + pct_sw))
 
         print(f"\n{C_CYN}{C_BOLD}╔══════════════════════════════════════════════════════════════════════════════╗{C_RST}")
-        print(f"{C_CYN}{C_BOLD}║                  📊  PROGRESS REPORT DASHBOARD (BOT v9) 📊                   ║{C_RST}")
+        print(f"{C_CYN}{C_BOLD}║                  📊  PROGRESS REPORT DASHBOARD (BOT v9)  📊                  ║{C_RST}")
         print(f"{C_CYN}{C_BOLD}╠══════════════════════════════════════════════════════════════════════════════╣{C_RST}")
         print(f"{C_CYN}║{C_RST} {C_YLW}Report Status    :{C_RST} {C_BOLD}{C_GRN}{report_stage:<57}{C_RST}{C_CYN}║{C_RST}")
         print(f"{C_CYN}║{C_RST} {C_YLW}Bot Mode & Speed :{C_RST} {C_WHT}{SESSION_STATS.get('operating_mode_str', 'N/A')} (Speed: {bot_config.get_bot_speed_multiplier():.2f}x){C_RST}")
@@ -226,6 +244,9 @@ def print_previous_progress_report(report_stage="PAUSED / STOPPED"):
         print(f"{C_CYN}║{C_RST} {C_GRN}✔ Successful Attacks   :{C_RST} {C_BOLD}{atk_ok:>10}{C_RST} {C_CYN}║{C_RST} {C_RED}✖ Unsuccessful/Restart :{C_RST} {C_BOLD}{atk_fail:>11}{C_RST} {C_CYN}║{C_RST}")
         print(f"{C_CYN}║{C_RST} {C_CYN}🔄 Total IDs Switched  :{C_RST} {C_BOLD}{SESSION_STATS.get('id_switches',0):>10}{C_RST} {C_CYN}║{C_RST} {C_YLW}🏰 Buildings Upgraded  :{C_RST} {C_BOLD}{bld_up:>11}{C_RST} {C_CYN}║{C_RST}")
         print(f"{C_CYN}║{C_RST} {C_MAG}🧱 Walls Upgraded      :{C_RST} {C_BOLD}{wall_up:>10}{C_RST} {C_CYN}║{C_RST} {C_GRN}⚡ Combined Upgrades   :{C_RST} {C_BOLD}{total_up:>11}{C_RST} {C_CYN}║{C_RST}")
+        print(f"{C_CYN}║{C_RST} {C_YLW}✂ Wrong Buttons Cut    :{C_RST} {C_BOLD}{SESSION_STATS.get('wrong_buttons_cut',0):>10}{C_RST} {C_CYN}║{C_RST} {C_BLU}💬 Clan Chat Closed    :{C_RST} {C_BOLD}{SESSION_STATS.get('clan_chat_closed',0):>11}{C_RST} {C_CYN}║{C_RST}")
+        print(f"{C_CYN}║{C_RST} {C_GRN}🎁 Daily Rewards Claim :{C_RST} {C_BOLD}{SESSION_STATS.get('daily_rewards_claimed',0):>10}{C_RST} {C_CYN}║{C_RST} {C_MAG}👋 Welcome Chief Cut   :{C_RST} {C_BOLD}{SESSION_STATS.get('welcome_chief_closed',0):>11}{C_RST} {C_CYN}║{C_RST}")
+        print(f"{C_CYN}║{C_RST} {C_RED}🛠 Stuck Recoveries    :{C_RST} {C_BOLD}{SESSION_STATS.get('stuck_recoveries',0):>10}{C_RST} {C_CYN}║{C_RST} {C_YLW}⏳ Maintenance Breaks  :{C_RST} {C_BOLD}{SESSION_STATS.get('maintenance_breaks',0):>11}{C_RST} {C_CYN}║{C_RST}")
         print(f"{C_CYN}{C_BOLD}╠══════════════════════════════════════╩═══════════════════════════════════════╣{C_RST}")
         print(f"{C_CYN}{C_BOLD}║            🥧  PIE DISTRIBUTION CHARTS & VISUAL GRAPHS  🥧                   ║{C_RST}")
         print(f"{C_CYN}{C_BOLD}╠══════════════════════════════════════════════════════════════════════════════╣{C_RST}")
@@ -234,6 +255,16 @@ def print_previous_progress_report(report_stage="PAUSED / STOPPED"):
         print(f"{C_CYN}║{C_RST} {C_BOLD}Time Share Pie :{C_RST} [{time_pie_bar}]")
         print(f"{C_CYN}║{C_RST}   ├─ {C_GRN}█ Attack Time  : {pct_atk:5.1f}% ({_format_duration_hms(atk_t_tot)}){C_RST}   ├─ {C_YLW}█ Upgrade Time : {pct_upg:5.1f}% ({_format_duration_hms(upg_t_tot)}){C_RST}")
         print(f"{C_CYN}║{C_RST}   └─ {C_MAG}█ ID Switch    : {pct_sw:5.1f}% ({_format_duration_hms(sw_t_tot)}){C_RST}   └─ {C_BLU}█ Home/Checks  : {pct_oth:5.1f}% ({_format_duration_hms(other_active_t)}){C_RST}")
+
+        atk_pie_bar = _make_segmented_pie_bar([("Success", atk_ok, C_GRN), ("Restart/Fail", atk_fail, C_RED)], total_width=44)
+        print(f"{C_CYN}║{C_RST} {C_BOLD}Attack Pie     :{C_RST} [{atk_pie_bar}]")
+        print(f"{C_CYN}║{C_RST}   ├─ {C_GRN}█ Success Ratio: {atk_rate:5.1f}% ({atk_ok} OK){C_RST}         └─ {C_RED}█ Retry/Fail   : {fail_rate:5.1f}% ({atk_fail} Retry){C_RST}")
+
+        up_max = max(1, bld_up, wall_up)
+        bld_bar = _make_ascii_bar(bld_up, up_max, width=26)
+        wal_bar = _make_ascii_bar(wall_up, up_max, width=26)
+        print(f"{C_CYN}║{C_RST} Building Upgrd : [{C_YLW}{bld_bar}{C_RST}] {C_BOLD}{bld_up:>5}{C_RST} Buildings")
+        print(f"{C_CYN}║{C_RST} Wall Upgrades  : [{C_MAG}{wal_bar}{C_RST}] {C_BOLD}{wall_up:>5}{C_RST} Walls")
 
         print(f"{C_CYN}{C_BOLD}╠══════════════════════════════════════════════════════════════════════════════╣{C_RST}")
         print(f"{C_CYN}{C_BOLD}║          📋  PER-ID DETAILED BREAKDOWN (NAME, ATTACKS & UPGRADES)  📋        ║{C_RST}")
@@ -245,41 +276,29 @@ def print_previous_progress_report(report_stage="PAUSED / STOPPED"):
         if not sorted_keys:
             print(f"{C_CYN}║{C_RST}  --  {C_CYN}║{C_RST} No ID activity yet   {C_CYN}║{C_RST}    --    {C_CYN}║{C_RST}      0 {C_CYN}║{C_RST}      0 {C_CYN}║{C_RST}       0 {C_CYN}║{C_RST}       0 {C_CYN}║{C_RST}")
         else:
+            max_id_atk = max([1] + [SESSION_STATS["per_id"][k]["attacks_ok"] for k in sorted_keys])
             for k in sorted_keys:
                 info = SESSION_STATS["per_id"][k]
                 idx_str = f"#{info['id_index']}"
                 uname = (info["name"] or f"ID #{info['id_index']}")[:20]
                 print(f"{C_CYN}║{C_RST} {C_BOLD}{idx_str:<4}{C_RST} {C_CYN}║{C_RST} {C_WHT}{uname:<20}{C_RST} {C_CYN}║{C_RST} {info['role'][:8]:<8} {C_CYN}║{C_RST} {C_GRN}{info['attacks_ok']:>6}{C_RST} {C_CYN}║{C_RST} {C_RED}{info['attacks_fail']:>6}{C_RST} {C_CYN}║{C_RST} {C_YLW}{info['buildings']:>7}{C_RST} {C_CYN}║{C_RST} {C_MAG}{info['walls']:>7}{C_RST} {C_CYN}║{C_RST}")
 
+            print(f"{C_CYN}{C_BOLD}╠══════╩══════════════════════╩══════════╩════════╩════════╩═════════╩═════════╣{C_RST}")
+            print(f"{C_CYN}{C_BOLD}║                        📊  PER-ID ATTACK GRAPH  📊                           ║{C_RST}")
+            for k in sorted_keys:
+                info = SESSION_STATS["per_id"][k]
+                uname = (info["name"] or f"ID #{info['id_index']}")[:14]
+                bar_s = _make_ascii_bar(info["attacks_ok"], max_id_atk, width=18)
+                print(f"{C_CYN}║{C_RST} ID #{info['id_index']:<2} ({uname:<14}) [{C_GRN}{bar_s}{C_RST}] {C_BOLD}{info['attacks_ok']}{C_RST} Atk | {C_YLW}{info['buildings']}B{C_RST}/{C_MAG}{info['walls']}W{C_RST}")
+
         print(f"{C_CYN}{C_BOLD}╚══════════════════════════════════════════════════════════════════════════════╝{C_RST}\n")
 
 # ==========================================
-# KEYBOARD LISTENER ENGINE ('ZX' / 'QW')
+# 4. KEYBOARD LISTENER ('ZX' & 'QW')
 # ==========================================
-def _trigger_pause_state():
-    with _REPORT_LOCK:
-        SESSION_STATS["pause_count"] = SESSION_STATS.get("pause_count", 0) + 1
-        SESSION_STATS["current_pause_start_ts"] = time.time()
-    _save_report_to_disk()
-    print("\n======================================================================")
-    print(f"|| [BOT PAUSED BY 'ZX'] Bot wahin ruk gaya hai (Speed={bot_config.get_bot_speed_multiplier():.2f}x Safe)! ||")
-    print("|| Dubara Home Page se Resume karne ke liye 'QW' type karein...      ||")
-    print("======================================================================")
-    print_previous_progress_report(report_stage="PAUSED BY 'ZX' (LIVE SNAPSHOT)")
-
-def _trigger_resume_state():
-    with _REPORT_LOCK:
-        SESSION_STATS["resume_count"] = SESSION_STATS.get("resume_count", 0) + 1
-        if SESSION_STATS.get("current_pause_start_ts") is not None:
-            SESSION_STATS["total_paused_sec"] = SESSION_STATS.get("total_paused_sec", 0.0) + max(0.0, time.time() - SESSION_STATS["current_pause_start_ts"])
-            SESSION_STATS["current_pause_start_ts"] = None
-    _save_report_to_disk()
-    bot_adb.LAST_HOME_CLEANUP_TIME = 0.0
-    print("\n======================================================================")
-    print(f"|| [BOT RESUMED BY 'QW'] Home Page se wapas start (Speed={bot_config.get_bot_speed_multiplier():.2f}x)! ||")
-    print("======================================================================\n")
 
 def _keyboard_listener_worker():
+    import bot_adb
     try:
         import termios, tty
         fd = sys.stdin.fileno()
@@ -304,8 +323,27 @@ def _keyboard_listener_worker():
                             bot_adb._PAUSE_STATE["paused"], bot_adb._PAUSE_STATE["buffer"], do_pause = True, "", True
                         elif bot_adb._PAUSE_STATE["paused"] and "qw" in buf:
                             bot_adb._PAUSE_STATE["paused"], bot_adb._PAUSE_STATE["resumed_just_now"], bot_adb._PAUSE_STATE["buffer"], do_resume = False, True, "", True
-                    if do_pause: _trigger_pause_state()
-                    elif do_resume: _trigger_resume_state()
+                    if do_pause:
+                        with _REPORT_LOCK:
+                            SESSION_STATS["pause_count"] = SESSION_STATS.get("pause_count", 0) + 1
+                            SESSION_STATS["current_pause_start_ts"] = time.time()
+                        _save_report_to_disk()
+                        print("\n======================================================================")
+                        print(f"|| [BOT PAUSED BY 'ZX'] Bot wahin ruk gaya hai (Speed={bot_config.get_bot_speed_multiplier():.2f}x Safe)! ||")
+                        print("|| Dubara Home Page se Resume karne ke liye 'QW' type karein...      ||")
+                        print("======================================================================")
+                        print_previous_progress_report(report_stage="PAUSED BY 'ZX' (LIVE SNAPSHOT)")
+                    elif do_resume:
+                        with _REPORT_LOCK:
+                            SESSION_STATS["resume_count"] = SESSION_STATS.get("resume_count", 0) + 1
+                            if SESSION_STATS.get("current_pause_start_ts") is not None:
+                                SESSION_STATS["total_paused_sec"] = SESSION_STATS.get("total_paused_sec", 0.0) + max(0.0, time.time() - SESSION_STATS["current_pause_start_ts"])
+                                SESSION_STATS["current_pause_start_ts"] = None
+                        _save_report_to_disk()
+                        bot_adb.LAST_HOME_CLEANUP_TIME = 0.0
+                        print("\n======================================================================")
+                        print(f"|| [BOT RESUMED BY 'QW'] Home Page se wapas start (Speed={bot_config.get_bot_speed_multiplier():.2f}x)! ||")
+                        print("======================================================================\n")
             else:
                 line = sys.stdin.readline()
                 if not line: time.sleep(0.2); continue
@@ -316,8 +354,27 @@ def _keyboard_listener_worker():
                         bot_adb._PAUSE_STATE["paused"], do_pause = True, True
                     elif bot_adb._PAUSE_STATE["paused"] and "qw" in clean_line:
                         bot_adb._PAUSE_STATE["paused"], bot_adb._PAUSE_STATE["resumed_just_now"], do_resume = False, True, True
-                if do_pause: _trigger_pause_state()
-                elif do_resume: _trigger_resume_state()
+                if do_pause:
+                    with _REPORT_LOCK:
+                        SESSION_STATS["pause_count"] = SESSION_STATS.get("pause_count", 0) + 1
+                        SESSION_STATS["current_pause_start_ts"] = time.time()
+                    _save_report_to_disk()
+                    print("\n======================================================================")
+                    print(f"|| [BOT PAUSED BY 'ZX'] Bot wahin ruk gaya hai (Speed={bot_config.get_bot_speed_multiplier():.2f}x Safe)! ||")
+                    print("|| Dubara Home Page se Resume karne ke liye 'QW' type karein...      ||")
+                    print("======================================================================")
+                    print_previous_progress_report(report_stage="PAUSED BY 'ZX' (LIVE SNAPSHOT)")
+                elif do_resume:
+                    with _REPORT_LOCK:
+                        SESSION_STATS["resume_count"] = SESSION_STATS.get("resume_count", 0) + 1
+                        if SESSION_STATS.get("current_pause_start_ts") is not None:
+                            SESSION_STATS["total_paused_sec"] = SESSION_STATS.get("total_paused_sec", 0.0) + max(0.0, time.time() - SESSION_STATS["current_pause_start_ts"])
+                            SESSION_STATS["current_pause_start_ts"] = None
+                    _save_report_to_disk()
+                    bot_adb.LAST_HOME_CLEANUP_TIME = 0.0
+                    print("\n======================================================================")
+                    print(f"|| [BOT RESUMED BY 'QW'] Home Page se wapas start (Speed={bot_config.get_bot_speed_multiplier():.2f}x)! ||")
+                    print("======================================================================\n")
     except Exception:
         pass
     finally:
@@ -326,6 +383,7 @@ def _keyboard_listener_worker():
             except: pass
 
 def start_pause_resume_listener():
+    import bot_adb
     with bot_adb._PAUSE_LOCK:
         if bot_adb._PAUSE_STATE["listener_started"]: return
         bot_adb._PAUSE_STATE["listener_started"] = True
