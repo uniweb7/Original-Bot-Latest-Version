@@ -6,6 +6,7 @@ import traceback
 import bot_config
 from bot_coords import FAST_ATTACK
 import bot_adb
+from bot_adb import BotPausedResumeHomeException  # FIXED IMPORT
 import bot_vision
 import bot_popups
 from bot_report import record_stat, record_duration
@@ -14,7 +15,6 @@ class RestartLoopException(Exception):
     pass
 
 def wait_for_enemy_base_load_smart(max_wait_sec=18.0):
-    """Starts checking for Enemy Battlefield / Clouds just 0.5s after clicking Attack."""
     min_initial_wait = 0.5
     poll_interval = 0.55
     print(f" [SMART 18s LOAD] Waiting initial {min_initial_wait:.1f}s (Max {max_wait_sec:.0f}s) for Enemy Base...")
@@ -45,12 +45,6 @@ def wait_for_enemy_base_load_smart(max_wait_sec=18.0):
     return False
 
 def _dynamic_deploy_pass(img, is_first_pass=False):
-    """
-    Scans the bottom army card bar for colorful cards.
-    - If is_first_pass: Rightmost 1 or 2 cards are deployed to Spells. Remaining to Army (6 rounds).
-    - If NOT is_first_pass: ALL colorful cards (Abilities/Leftovers) are deployed to Army (6 rounds).
-    Returns the number of colorful cards found.
-    """
     colorful_centers = bot_vision.scan_colorful_army_cards_a14(img, scan_box=FAST_ATTACK["ARMY_CARD_SCAN_BOX"])
     if not colorful_centers:
         return 0
@@ -111,9 +105,6 @@ def execute_attack(is_first_attack=True):
                 if bot_vision.is_cloud_screen_a14(img_scan):
                     raise RestartLoopException("Clouds did not clear after extended wait")
 
-            # ==================================================================
-            # PHASE 1: DYNAMIC DEPLOYMENT (FIRST PASS + SECOND PASS)
-            # ==================================================================
             print("\n [⏱ DEPLOYMENT PHASE] Scanning & Deploying all Units/Heroes...")
             spell_select_timer = time.time()
             
@@ -123,14 +114,10 @@ def execute_attack(is_first_attack=True):
             if cards_found == 0:
                 print(" [!] [WARNING] No colorful cards found! Re-checking...")
 
-            # Immediate Second Pass for Hero Abilities / Leftover units
             print(" [⚡ ABILITY/RE-SCAN] Instantly re-scanning for remaining active cards (Abilities)...")
             img_rescan = bot_adb.get_screenshot(force_fresh=True)
             _dynamic_deploy_pass(img_rescan, is_first_pass=False)
 
-            # ==================================================================
-            # PHASE 2: 45s TIMER WITH PERIODIC ABILITY TRIGGER & 3-STAR CHECK
-            # ==================================================================
             battle_ended_early = False
             last_ability_scan_t = time.time()
 
@@ -143,13 +130,11 @@ def execute_attack(is_first_attack=True):
 
                 b_img = bot_adb.get_screenshot(force_fresh=True)
 
-                # Periodic 10s Re-Scan for Abilities
                 if (time.time() - last_ability_scan_t) >= 10.0:
                     last_ability_scan_t = time.time()
                     print(f" [🔍 10s RE-SCAN] Checking for unused abilities at {elapsed_since_spell:.1f}s mark...")
                     _dynamic_deploy_pass(b_img, is_first_pass=False)
 
-                # Periodic 5s Early 3-Star Check (after 20 seconds)
                 if elapsed_since_spell >= 20.0:
                     colorful_left = len(bot_vision.scan_colorful_army_cards_a14(b_img))
                     victory_btn_visible = bot_vision.is_return_home_victory_button_visible_a14(b_img)
@@ -163,9 +148,6 @@ def execute_attack(is_first_attack=True):
                 else:
                     bot_adb.smart_sleep(min(5.0, rem_wait), apply_speed=False)
 
-            # ==================================================================
-            # 10. FIXED RETURN HOME SEQUENCE (4.2s RELIABLE SEQUENCE)
-            # ==================================================================
             if not battle_ended_early:
                 print(" [SURRENDER] Clicking Surrender Button (181, 800) 3 times...")
                 bot_adb.batch_tap_sequence([FAST_ATTACK["SURRENDER_BTN"]] * 3, inter_delay=0.08, jitter=3)
