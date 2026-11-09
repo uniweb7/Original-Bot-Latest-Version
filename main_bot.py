@@ -10,6 +10,7 @@ import traceback
 import bot_config
 from bot_config import ADVANCE_SPEED_TABLE
 import bot_adb
+from bot_adb import BotPausedResumeHomeException  # FIXED IMPORT
 import bot_popups
 import bot_report
 import bot_id_switch
