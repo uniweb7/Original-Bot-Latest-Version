@@ -1,11 +1,21 @@
 # bot_config.py
-# Global Configuration & Speed Settings for Clash of Clans AI Bot (Samsung Galaxy A14)
+# Global Configuration, Speed Control & Path Constants for COC Bot v9
+# (Based 100% on Original Bot Version 8 Architecture with Zero-Inertia Fixes)
 
 import time
+import os
 
+# ==========================================
+# 1. PATHS & FILE SETTINGS
+# ==========================================
+MEMORY_FILE_PATH = "bot_id_memory.json"
+CUSTOM_PRESET_FILE = "bot_custom_preset.json"
+
+# ==========================================
+# 2. ROOT-LEVEL GAME SPEED-UP ENGINE (A-Y)
+# ==========================================
 BOT_SPEED_MULTIPLIER = 1.0
 
-# Fixed Variable Name: ADVANCE_SPEED_TABLE (Required by main_bot.py)
 ADVANCE_SPEED_TABLE = [
     ("A", 1.00, "Standard Speed (Default - 100% As Coded)"),
     ("B", 1.10, "1.10x Fast Speed"),
@@ -35,6 +45,7 @@ ADVANCE_SPEED_TABLE = [
 ]
 
 def set_bot_speed_multiplier(mult):
+    """Sets the global bot speed multiplier (1.00x standard up to 2.25x max)."""
     global BOT_SPEED_MULTIPLIER
     val = max(1.0, min(2.25, float(mult)))
     BOT_SPEED_MULTIPLIER = round(val, 2)
@@ -45,7 +56,11 @@ def get_bot_speed_multiplier():
     return BOT_SPEED_MULTIPLIER
 
 def scale_time_by_speed(seconds, min_floor=0.08):
-    """Scales wait/delay durations inversely by BOT_SPEED_MULTIPLIER at root level."""
+    """
+    Scales wait/delay durations inversely by BOT_SPEED_MULTIPLIER at root level,
+    while enforcing a mandatory safe hardware floor so that even at 2.0x-2.25x
+    no button click or game transition ever fails!
+    """
     raw = float(seconds)
     if raw <= 0.0:
         return 0.0
@@ -54,12 +69,12 @@ def scale_time_by_speed(seconds, min_floor=0.08):
     scaled = raw / BOT_SPEED_MULTIPLIER
     return max(min_floor, scaled)
 
-# ---------------------------------------------------------
-# GLOBAL TIMERS & WATCHDOG SETTINGS
-# ---------------------------------------------------------
+# ==========================================
+# 3. GLOBAL TIMERS & WATCHDOG SETTINGS
+# ==========================================
 CONNECTION_OCR_INTERVAL_SEC = 300.0   # 5 Minutes periodic OCR check
 CONNECTION_RETRY_GAP_SEC = 300.0      # 5 Minutes gap between reload attempts
 CONNECTION_MAX_ATTEMPTS = 5           # 5 reload attempts
-CONNECTION_MAX_OUTAGE_SEC = 3600.0    # 1 Hour (60 Minutes) maximum recovery window
+CONNECTION_MAX_OUTAGE_SEC = 3600.0    # 1 Hour maximum recovery window before auto-sleep
 MAINTENANCE_REST_SEC = 600.0          # 10 Minutes rest for Maintenance Break
 BATTLE_TIMER_DURATION_SEC = 45.0      # Max 45 seconds for attack deployment
