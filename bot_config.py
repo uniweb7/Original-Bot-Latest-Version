@@ -5,7 +5,7 @@ import time
 
 BOT_SPEED_MULTIPLIER = 1.0
 
-# यहाँ नाम सही करके ADVANCE_SPEED_TABLE कर दिया गया है
+# Fixed Variable Name: ADVANCE_SPEED_TABLE (Required by main_bot.py)
 ADVANCE_SPEED_TABLE = [
     ("A", 1.00, "Standard Speed (Default - 100% As Coded)"),
     ("B", 1.10, "1.10x Fast Speed"),
