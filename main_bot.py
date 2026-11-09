@@ -1,5 +1,6 @@
 # main_bot.py
 # Entry Point for Clash of Clans AI Bot v9 (Samsung Galaxy A14 Edition)
+# (100% Original V8 Main Loop + V9 Custom Mode & Progress Report Integrations)
 
 import os
 import json
@@ -10,18 +11,20 @@ import traceback
 import bot_config
 from bot_config import ADVANCE_SPEED_TABLE
 import bot_adb
-from bot_adb import BotPausedResumeHomeException  # FIXED IMPORT
+from bot_adb import BotPausedResumeHomeException
 import bot_popups
 import bot_report
 import bot_id_switch
 import bot_attack
 import bot_modes
+import bot_upgrade_buildings
+import bot_upgrade_special
 
 # ==========================================
-# 1. CUSTOM MODE CONFIGURATOR & UI
+# 1. CUSTOM MODE (V9) CONFIGURATOR & UI
 # ==========================================
 def configure_custom_mode_14():
-    """Builds and saves the Custom Mode Preset."""
+    """Builds and saves the Custom Mode Preset (Mode 14)."""
     preset = {
         "combo_type": "1+2+3",
         "attacks_per_round": 5,
@@ -30,10 +33,9 @@ def configure_custom_mode_14():
         "stop_builders": 0,
         "rounds_per_id": 3
     }
-    preset_file = "bot_custom_preset.json"
-    if os.path.exists(preset_file):
+    if os.path.exists(bot_config.CUSTOM_PRESET_FILE):
         try:
-            with open(preset_file, "r") as f:
+            with open(bot_config.CUSTOM_PRESET_FILE, "r") as f:
                 preset.update(json.load(f))
         except: pass
 
@@ -79,11 +81,14 @@ def configure_custom_mode_14():
         preset["rounds_per_id"] = int(r_in) if r_in.isdigit() else 3
 
     try:
-        with open(preset_file, "w") as f:
+        with open(bot_config.CUSTOM_PRESET_FILE, "w") as f:
             json.dump(preset, f, indent=2)
     except: pass
     return preset
 
+# ==========================================
+# 2. ADVANCE SPEED FEATURES MENU (A-Y)
+# ==========================================
 def open_advance_features_menu():
     letter_to_spd = {l: m for l, m, _ in ADVANCE_SPEED_TABLE}
     while True:
@@ -94,18 +99,22 @@ def open_advance_features_menu():
         print(f" || Current Active Bot Speed : {cur_spd:.2f}x                               ||")
         for l, m, desc in ADVANCE_SPEED_TABLE:
             print(f" ||   [{l}] -> {m:.2f}x  ({desc}) {'<-- [ACTIVE]' if abs(cur_spd-m)<0.005 else ''}")
+        print(" ||   [R] -> View Current / Previous Progress Report               ||")
         print(" ||   [0] -> Back to Main Bot Operating Menu                       ||")
         print("======================================================================")
 
-        raw = input("\n Speed Option type karein (A-Y) ya 0 wapas jane ke liye [Default=A]: ").strip().upper()
+        raw = input("\n Speed Option type karein (A-Y), R (Report), ya 0 wapas jane ke liye [Default=A]: ").strip().upper()
         if not raw or raw == "0": break
+        if raw == "R":
+            bot_report.print_previous_progress_report(report_stage="MENU PREVIEW")
+            continue
         if raw in letter_to_spd:
             bot_config.set_bot_speed_multiplier(letter_to_spd[raw])
             break
         print(" [!] Galat input! Kripya A se Y ke beech chunein.")
 
 # ==========================================
-# 2. MAIN BOT UI & MASTER LOOP
+# 3. MAIN UI BOT CONFIGURATION
 # ==========================================
 def select_bot_configuration():
     while True:
@@ -117,7 +126,7 @@ def select_bot_configuration():
         print("------------------------------------------------------------------------------")
         print(" || Select Bot Operating Mode (1 to 14):                                     ||")
         print(" || [1] -> Fast Attack Only                  (सिर्फ फास्ट अटैक - Infinity)      ||")
-        print(" || [2] -> Combined Building & Wall Only     (बिल्डिंग + वॉल अपग्रेड)            ||")
+        print(" || [2] -> Combined Building & Wall Only     (बिल्डिंग + वॉल अपग्रेड - 1m Gap)  ||")
         print(" || [3] -> Combined Special Upgrade Only     (Spells + Pets + Equipments)    ||")
         print(" || [4] -> Tried All                         (Smart Upgrade + 10 Attacks)    ||")
         print(" || [5] -> ID Changement Only                (सिर्फ ID चेंज - हर 2 सेकंड में)    ||")
@@ -145,8 +154,8 @@ def select_bot_configuration():
 
     custom_cfg = configure_custom_mode_14() if choice == "14" else {}
     mode_names = {
-        "1": "MODE 1: FAST ATTACK ONLY", "2": "MODE 2: BUILDING & WALL UPGRADE",
-        "3": "MODE 3: SPECIAL UPGRADE ONLY", "4": "MODE 4: TRIED ALL",
+        "1": "MODE 1: FAST ATTACK ONLY (Infinity)", "2": "MODE 2: BUILDING & WALL UPGRADE (1 Min Gap)",
+        "3": "MODE 3: SPECIAL UPGRADE ONLY", "4": "MODE 4: TRIED ALL (Combined Upgrade + 10 Attacks)",
         "5": "MODE 5: ID CHANGEMENT ONLY", "6": "MODE 6: ID CHANGE + FAST ATTACK",
         "7": "MODE 7: FULLY BOTTED SYSTEM", "9": "MODE 9: FAST MODE 1",
         "10": "MODE 10: FAST MODE 2", "11": "MODE 11: SMART LOOT-FIRST TURBO",
@@ -179,6 +188,9 @@ def select_bot_configuration():
     input("\n Bot Start karne ke liye [ENTER] key dabayein: ")
     return choice, total_ids, start_id, custom_cfg
 
+# ==========================================
+# 4. THE MASTER LOOP (100% Original Logic Core)
+# ==========================================
 def main_loop():
     # 1. Print Yesterday's / Previous Progress Report before starting!
     bot_report.print_saved_progress_report()
@@ -199,7 +211,7 @@ def main_loop():
 
     cycle_count = 1
     consecutive_errors = 0
-    runtime_state = {"current_id": current_id, "id_timer_start": None, "attacks_done": 0}
+    runtime_state = {"current_id": current_id, "id_timer_start": None, "attacks_done": 0, "phase": "START_CYCLE"}
 
     while True:
         try:
@@ -216,10 +228,11 @@ def main_loop():
             # STANDARD MODES (1 to 7)
             # -----------------------------------------------------
             if bot_mode == "1":
-                bot_modes.run_n_attacks(1, phase_label="MODE 1 (INFINITY)")
+                bot_modes.run_n_fast_attacks_with_resume_memory(runtime_state, 1, phase_label="MODE 1 (INFINITY)")
             
             elif bot_mode == "2":
-                bot_modes.run_full_smart_upgrade_sequence(do_spell=False, do_pet=False, do_equip=False, stop_builders=1)
+                bot_modes.run_combined_building_and_wall_upgrade("MODE 2 COMBINED UPGRADE", stop_builders=1)
+                print(" [MODE 2] Waiting 1 Minute (60s) before next Combined Upgrade resource check...")
                 bot_adb.smart_sleep(60.0, apply_speed=False)
                 
             elif bot_mode == "3":
@@ -227,8 +240,9 @@ def main_loop():
                 bot_adb.smart_sleep(60.0, apply_speed=False)
                 
             elif bot_mode == "4":
-                bot_modes.run_full_smart_upgrade_sequence(stop_builders=1)
-                bot_modes.run_n_attacks(10, phase_label="MODE 4 (10 ATTACKS)")
+                bot_modes.run_combined_building_and_wall_upgrade("MODE 4 COMBINED UPGRADE", stop_builders=1)
+                runtime_state["attacks_done"] = 0
+                bot_modes.run_n_fast_attacks_with_resume_memory(runtime_state, 10, phase_label="MODE 4 (10 ATTACKS)")
                 
             elif bot_mode == "5":
                 print(f" [MODE 5] Holding 2 Seconds on ID #{active_id}...")
@@ -249,11 +263,12 @@ def main_loop():
                     runtime_state["current_id"] = next_id
                     runtime_state["id_timer_start"] = None
                 else:
-                    bot_modes.run_n_attacks(1, phase_label=f"MODE 6 ({elapsed/60.0:.1f}m / 10m)")
+                    bot_modes.run_n_fast_attacks_with_resume_memory(runtime_state, 1, phase_label=f"MODE 6 ({elapsed/60.0:.1f}m / 10m)")
                     
             elif bot_mode == "7":
                 bot_modes.run_full_smart_upgrade_sequence(stop_builders=1)
-                bot_modes.run_n_attacks(10, phase_label=f"MODE 7 | ID #{active_id}")
+                runtime_state["attacks_done"] = 0
+                bot_modes.run_n_fast_attacks_with_resume_memory(runtime_state, 10, phase_label=f"MODE 7 | ID #{active_id}")
                 bot_modes.run_full_smart_upgrade_sequence(stop_builders=1)
                 next_id = (active_id % total_ids) + 1
                 bot_id_switch.switch_to_target_id(next_id, total_ids, current_id_index=active_id)
@@ -263,53 +278,86 @@ def main_loop():
             # ADVANCED MODES (9 to 14)
             # -----------------------------------------------------
             elif bot_mode == "9":
-                bot_modes.execute_mode_9_fast_1(active_id)
+                runtime_state["attacks_done"] = 0
+                bot_modes.run_n_fast_attacks_with_resume_memory(runtime_state, 5, phase_label=f"MODE 9 | ID #{active_id}")
+                bot_modes.run_full_smart_upgrade_sequence(do_spell=False, do_pet=False, do_equip=False, stop_builders=1)
                 bot_adb.smart_sleep(1.0, apply_speed=True)
                 next_id = (active_id % total_ids) + 1
                 bot_id_switch.switch_to_target_id(next_id, total_ids, current_id_index=active_id)
                 runtime_state["current_id"] = next_id
-                bot_adb.smart_sleep(1.0, apply_speed=True)
                 
             elif bot_mode == "10":
-                bot_modes.execute_mode_10_fast_2(active_id)
+                runtime_state["attacks_done"] = 0
+                bot_modes.run_n_fast_attacks_with_resume_memory(runtime_state, 5, phase_label=f"MODE 10 | ID #{active_id}")
+                bot_modes.run_full_smart_upgrade_sequence(do_spell=True, do_pet=True, do_equip=True, stop_builders=0)
                 bot_adb.smart_sleep(1.0, apply_speed=True)
                 next_id = (active_id % total_ids) + 1
                 bot_id_switch.switch_to_target_id(next_id, total_ids, current_id_index=active_id)
                 runtime_state["current_id"] = next_id
-                bot_adb.smart_sleep(1.0, apply_speed=True)
                 
             elif bot_mode == "11":
-                bot_modes.execute_mode_11_smart_loot_first_turbo(active_id)
+                bot_modes.run_full_smart_upgrade_sequence(stop_builders=1)
+                runtime_state["attacks_done"] = 0
+                bot_modes.run_n_fast_attacks_with_resume_memory(runtime_state, 5, phase_label=f"MODE 11 | ID #{active_id}")
+                bot_modes.run_full_smart_upgrade_sequence(stop_builders=1)
                 bot_adb.smart_sleep(1.0, apply_speed=True)
                 next_id = (active_id % total_ids) + 1
                 bot_id_switch.switch_to_target_id(next_id, total_ids, current_id_index=active_id)
                 runtime_state["current_id"] = next_id
-                bot_adb.smart_sleep(1.0, apply_speed=True)
                 
             elif bot_mode == "12":
-                bot_modes.execute_mode_12_builder_zero_dominator(active_id)
+                for r in range(1, 4):
+                    runtime_state["attacks_done"] = 0
+                    bot_modes.run_n_fast_attacks_with_resume_memory(runtime_state, 4, phase_label=f"MODE 12 | Round {r}")
+                    rem_bldrs = bot_modes.run_full_smart_upgrade_sequence(stop_builders=0)
+                    if rem_bldrs == 0: break
                 bot_adb.smart_sleep(1.0, apply_speed=True)
                 next_id = (active_id % total_ids) + 1
                 bot_id_switch.switch_to_target_id(next_id, total_ids, current_id_index=active_id)
                 runtime_state["current_id"] = next_id
-                bot_adb.smart_sleep(1.0, apply_speed=True)
                 
             elif bot_mode == "13":
-                bot_modes.execute_mode_13_overnight_marathon(active_id)
-                bot_adb.smart_sleep(1.0, apply_speed=True)
-                next_id = (active_id % total_ids) + 1
-                bot_id_switch.switch_to_target_id(next_id, total_ids, current_id_index=active_id)
-                runtime_state["current_id"] = next_id
-                bot_adb.smart_sleep(1.0, apply_speed=True)
-                
-            elif bot_mode == "14":
-                bot_modes.execute_mode_14_custom(active_id, custom_cfg)
-                if "3" in custom_cfg.get("combo_type", ""):
+                if runtime_state["id_timer_start"] is None:
+                    runtime_state["id_timer_start"] = time.time()
+                elapsed = time.time() - runtime_state["id_timer_start"]
+                if elapsed >= 1200.0:
                     bot_adb.smart_sleep(1.0, apply_speed=True)
                     next_id = (active_id % total_ids) + 1
                     bot_id_switch.switch_to_target_id(next_id, total_ids, current_id_index=active_id)
                     runtime_state["current_id"] = next_id
+                    runtime_state["id_timer_start"] = None
+                else:
+                    runtime_state["attacks_done"] = 0
+                    bot_modes.run_n_fast_attacks_with_resume_memory(runtime_state, 3, phase_label=f"MODE 13 MARATHON | ID #{active_id}")
+                    bot_modes.run_full_smart_upgrade_sequence(stop_builders=1)
+                
+            elif bot_mode == "14":
+                combo = custom_cfg.get("combo_type", "1+2+3")
+                atk_target = int(custom_cfg.get("attacks_per_round", 5))
+                upg_order = custom_cfg.get("upgrade_order", "BUILDING_THEN_WALL")
+                chk_store = bool(custom_cfg.get("check_storage", False))
+                stop_b = int(custom_cfg.get("stop_builders", 0))
+                max_rounds = int(custom_cfg.get("rounds_per_id", 3)) if "3" in combo else 1
+
+                for r_no in range(1, max_rounds + 1):
+                    runtime_state["attacks_done"] = 0
+                    bot_modes.run_n_fast_attacks_with_resume_memory(runtime_state, atk_target, phase_label=f"CUSTOM 14 | ID #{active_id} (Round {r_no})")
+                    if "2" in combo:
+                        do_upg = True
+                        if chk_store:
+                            bot_popups.perform_home_cleanup_once(max_age_sec=1.5)
+                            do_upg = bot_popups.check_resources_full_for_upgrade()
+                        if do_upg:
+                            do_b = ("BUILDING" in upg_order)
+                            do_w = ("WALL" in upg_order)
+                            rem_b = bot_modes.run_full_smart_upgrade_sequence(do_bldg=do_b, do_wall=do_w, stop_builders=stop_b)
+                            if rem_b <= stop_b: break
+                
+                if "3" in combo:
                     bot_adb.smart_sleep(1.0, apply_speed=True)
+                    next_id = (active_id % total_ids) + 1
+                    bot_id_switch.switch_to_target_id(next_id, total_ids, current_id_index=active_id)
+                    runtime_state["current_id"] = next_id
 
             bot_adb.clean_ram_garbage()
             consecutive_errors = 0
@@ -346,6 +394,7 @@ def main_loop():
                 bot_id_switch.switch_to_target_id(next_id, total_ids, current_id_index=runtime_state["current_id"])
                 runtime_state["current_id"] = next_id
                 consecutive_errors = 0
+                runtime_state["attacks_done"] = 0
 
 if __name__ == "__main__":
     main_loop()
