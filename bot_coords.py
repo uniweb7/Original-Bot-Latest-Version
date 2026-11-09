@@ -1,8 +1,8 @@
 # bot_coords.py
-# Centralized Geometry & Coordinates for Samsung Galaxy A14
+# Centralized Geometry & Coordinates for Clash of Clans AI Bot (Samsung Galaxy A14)
 
 # ---------------------------------------------------------
-# HOME PAGE, POPUPS & ERROR BOXES
+# 1. HOME PAGE, POPUPS & ERROR BOXES
 # ---------------------------------------------------------
 HOME_PAGE_CHECK_COORDS = [(2050, 285), (2050, 250)]
 
@@ -41,6 +41,7 @@ DAILY_REWARD_GREEN_BOXES = [
 MAINTENANCE_BREAK_BOX = (979, 16, 1442, 63)
 MAINTENANCE_CLICK_COORD = (1210, 39)
 
+# Connection Lost Coords based on Sketch & Screenshots
 CONNECTION_LOST_OUTER_BOX = (751, 684, 1733, 1017)
 CONNECTION_LOST_TEXT_BOX_LEFT = (773, 690, 1059, 767)
 CONNECTION_LOST_TEXT_BOX_WIDE = (773, 690, 1773, 767)
@@ -53,7 +54,7 @@ GOLD_STORAGE_CHECK_BOX = (2015, 43, 2081, 78)
 ELIXIR_STORAGE_CHECK_BOX = (2003, 116, 2103, 151)
 
 # ---------------------------------------------------------
-# SMART UPGRADE SYSTEM (BUILDING, WALL, SPELL, PET, EQUIP)
+# 2. SMART UPGRADE SYSTEM (BUILDING, WALL, SPELL, PET, EQUIP)
 # ---------------------------------------------------------
 UPGRADE_A14 = {
     "BUILD_CLICK": (2233, 948),
@@ -62,12 +63,12 @@ UPGRADE_A14 = {
     "C1_REOPEN_LIST": (2050, 56),
     "WALL_REOPEN_LIST_CLICK": (2062, 54),
     
-    # 1. Filter Select Process
+    # Filter Select Process
     "FILTER_ENTER_BTN": (1788, 43),
     "FILTER_SELECT_BTN": (1145, 715),
     "FILTER_BACK_BTN": (2021, 51),
     
-    # 2. Upgrade List OCR Boxes
+    # Upgrade List OCR Boxes (Initial & Expanded after scroll)
     "UPGRADE_LIST_BOX_INITIAL": (1820, 545, 2312, 926),
     "UPGRADE_LIST_BOX_EXPANDED": (1818, 95, 2311, 925),
     
@@ -78,14 +79,14 @@ UPGRADE_A14 = {
     "WALL_STEP_A1_CLICK": (439, 851),
     "WALL_CONFIRM_CLICK": (1595, 942),
 
-    # 3. Extra Tabs
+    # Extra Upgrade Tabs (Spells, Pets, Equipments)
     "SPELL_CHECK_BOX": (1915, 1007, 2007, 1046),
     "SPELL_TAB_CLICK": (1961, 1026),
     "PET_CHECK_BOX": (2037, 1006, 2329, 1040),
     "PET_TAB_CLICK": (2183, 1023),
     "EQUIPMENT_TAB_CLICK": (2121, 1011),
 
-    # 4. Goblin Builder
+    # Goblin Builder Exception Coords
     "GOBLIN_PAGE_BOX": (1134, 193, 2009, 735),
     "GOBLIN_CHIEF_BOX": (1420, 203, 1714, 282),
     "GOBLIN_LETTER_BOX": (1154, 330, 1980, 493),
@@ -131,7 +132,7 @@ CONDITION_1_EXCLUDED = [
 ]
 
 # ---------------------------------------------------------
-# SMART ATTACK SYSTEM (DYNAMIC ARMY DEPLOY)
+# 3. SMART ATTACK SYSTEM (DYNAMIC ARMY DEPLOY)
 # ---------------------------------------------------------
 FAST_ATTACK = {
     "BATTLE_BTN": (182, 961),
@@ -141,10 +142,10 @@ FAST_ATTACK = {
     "OKAY_BTN": (1419, 701),
     "RETURN_HOME_BTN": (1222, 918),
 
-    # Dynamic Army Card Scanner Box
+    # Dynamic Army Card Scanner Box (Replaces static Siege/Hero coords)
     "ARMY_CARD_SCAN_BOX": (355, 884, 2213, 1071),
     
-    # Base click coordinates (all colorful cards are mapped here dynamically)
+    # Base click coordinates (colorful cards are mapped here dynamically)
     "SPELL_DEPLOY_LIST": [
         (378, 469), (594, 350), (566, 569), (691, 461),
         (864, 278), (812, 760), (928, 569), (915, 444),
@@ -158,7 +159,7 @@ FAST_ATTACK = {
 }
 
 # ---------------------------------------------------------
-# SUPERCELL ID SWITCH SYSTEM
+# 4. SUPERCELL ID SWITCH SYSTEM
 # ---------------------------------------------------------
 ID_SWITCH_A14 = {
     "PROFILE_BTN": (142, 122),
