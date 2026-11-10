@@ -543,6 +543,11 @@ def start_pause_resume_listener():
         if _PAUSE_STATE["listener_started"]:
             return
         _PAUSE_STATE["listener_started"] = True
+    # Keep Android screen awake while bot is running so device never auto-sleeps!
+    try:
+        subprocess.run(["adb", "shell", "svc", "power", "stayon", "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+    except Exception:
+        pass
     t = threading.Thread(target=_keyboard_listener_worker, daemon=True)
     t.start()
 
@@ -673,7 +678,7 @@ UPGRADE_A14 = {
     # Special Upgrade Tabs (Spells, Pets, Equipments)
     "SPELL_CHECK_BOX": (1915, 1007, 2007, 1046),
     "SPELL_TAB_CLICK": (1961, 1026),
-    "PET_CHECK_BOX": (2037, 1006, 2329, 1040),
+    "PET_CHECK_BOX": (2085, 1006, 2195, 1042),
     "PET_TAB_CLICK": (2183, 1023),
     "EQUIPMENT_TAB_CLICK": (2121, 1011),
 
@@ -787,7 +792,7 @@ FAST_ATTACK = {
 }
 
 # ==========================================
-# 3B. SUPERCELL ID SWITCH SYSTEM COORDINATES (CALIBRATED 3-CARD ZERO-SKIP SCROLL)
+# 3B. SUPERCELL ID SWITCH SYSTEM COORDINATES (100% RESTORED ORIGINAL BOT v8)
 # ==========================================
 ID_SWITCH_A14 = {
     "PROFILE_BTN": (142, 122),
@@ -827,13 +832,13 @@ ID_SWITCH_A14 = {
         (1763, 1044)
     ],
 
-    # Calibrated 2.8-Card Safe Scroll (960 -> 280 = 680px @ 1250ms) so NO card ever scrolls past the top!
-    "SCROLL_START": (1763, 960),
-    "SCROLL_END": (1763, 280),
-    "SCROLL_DURATION_MS": 1250,
+    # Restored 100% Original Bot v8 Scroll & Timing Coordinates
+    "SCROLL_START": (1763, 1030),
+    "SCROLL_END": (1763, 215),
+    "SCROLL_DURATION_MS": 1050,
 
-    "ID_INITIAL_WAIT_SEC": 2.8,
-    "ID_POLL_INTERVAL_SEC": 0.65,
+    "ID_INITIAL_WAIT_SEC": 3.5,
+    "ID_POLL_INTERVAL_SEC": 1.0,
     "ID_LOAD_WAIT_SEC": 30.0
 }
 
@@ -851,8 +856,16 @@ _SCREENSHOT_CACHE = {
 LAST_HOME_CLEANUP_TIME = 0.0
 LAST_DETECTED_BUILDERS = None
 LAST_BUILDER_CHECK_TIME = 0.0
+LAST_GOBLIN_DETECTED = False
 _LAST_CONN_LOST_OCR_TIME = 0.0
 _IN_CONN_LOST_HANDLER = False
+
+def reset_goblin_detected_flag():
+    global LAST_GOBLIN_DETECTED
+    LAST_GOBLIN_DETECTED = False
+
+def was_goblin_detected():
+    return bool(LAST_GOBLIN_DETECTED)
 
 def _invalidate_screen_cache():
     _SCREENSHOT_CACHE["img"] = None
@@ -874,7 +887,7 @@ def reset_persistent_adb_shell():
 
 def _shutdown_bot_into_sleep_mode(reason="1-Hour Connection/Device Outage Limit Reached"):
     """
-    Puts the device screen to sleep (keyevent 223) to prevent battery drain,
+    Puts the device screen to sleep (keyevent 223) ONLY after a genuine 1-hour (60-minute) outage,
     saves and prints the final Previous Progress Report, and terminates the bot cleanly!
     """
     print("\n==============================================================================")
@@ -882,6 +895,7 @@ def _shutdown_bot_into_sleep_mode(reason="1-Hour Connection/Device Outage Limit 
     print("|| Device ko Sleep Mode me bhej kar Bot ko safely band kiya ja raha hai...  ||")
     print("==============================================================================")
     try:
+        subprocess.run(["adb", "shell", "svc", "power", "stayon", "false"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
         subprocess.run(["adb", "shell", "input", "keyevent", "223"], timeout=4)
     except Exception:
         pass
@@ -1045,9 +1059,9 @@ def _capture_raw_screenshot_once():
 def get_screenshot(check_pause=True, force_fresh=False):
     """
     In-Memory RAM Screenshot with:
-      1. 0.24s micro-cache (Time-Cut #T4).
+      1. 0.24s micro-cache.
       2. Automatic 1-Hour Device/ADB Disconnect Recovery Loop.
-      3. Automatic 5-Minute Periodic 'Connection lost / Try again' OCR Check!
+      3. Safe 5-Minute Periodic 'Connection lost / Try again' Check (Never false-triggers sleep!).
     """
     global _LAST_CONN_LOST_OCR_TIME, _IN_CONN_LOST_HANDLER
     if check_pause:
@@ -1066,13 +1080,15 @@ def get_screenshot(check_pause=True, force_fresh=False):
             elapsed_outage = time.time() - outage_start
             if elapsed_outage >= CONNECTION_MAX_OUTAGE_SEC:
                 _shutdown_bot_into_sleep_mode("Device/ADB Unresponsive for 1 Full Hour (60 Mins)")
-            print(f" [!] [DEVICE/ADB ERROR #{attempt_no}] Screenshot failed ({elapsed_outage/60.0:.1f}m / 60.0m)! Retrying in 30s...")
+            print(f" [!] [DEVICE/ADB ERROR #{attempt_no}] Screenshot failed ({elapsed_outage/60.0:.1f}m / 60.0m)! Waking screen & retrying in 15s...")
             reset_persistent_adb_shell()
             try:
                 subprocess.run(["adb", "reconnect"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+                subprocess.run(["adb", "shell", "input", "keyevent", "224"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+                subprocess.run(["adb", "shell", "svc", "power", "stayon", "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
             except Exception:
                 pass
-            time.sleep(30.0)
+            time.sleep(15.0)
             img = _capture_raw_screenshot_once()
             attempt_no += 1
 
@@ -1081,7 +1097,7 @@ def get_screenshot(check_pause=True, force_fresh=False):
 
     if (not _IN_CONN_LOST_HANDLER) and ((time.time() - _LAST_CONN_LOST_OCR_TIME) >= CONNECTION_OCR_INTERVAL_SEC):
         _LAST_CONN_LOST_OCR_TIME = time.time()
-        if check_and_handle_connection_lost_a14(img, force_ocr=True):
+        if check_and_handle_connection_lost_a14(img, force_ocr=False):
             img = _capture_raw_screenshot_once() or img
             _SCREENSHOT_CACHE["img"] = img
             _SCREENSHOT_CACHE["timestamp"] = time.time()
@@ -1094,11 +1110,20 @@ def clean_ram_garbage():
     gc.collect()
 
 # ==========================================
-# 5. CONNECTION LOST / TRY AGAIN AUTO-RELOAD & 1-HOUR RECOVERY ENGINE
+# 5. CONNECTION LOST / TRY AGAIN AUTO-RELOAD (FIXED FALSE-POSITIVE SLEEP BUG!)
 # ==========================================
 
 def _has_connection_lost_dark_box_pixels(img):
-    """Fast 0.002s pixel pre-check for the 'Connection lost' dark charcoal dialog box (Time-Cut #T5)."""
+    """
+    Strict Pixel Pre-Check for the 'Connection lost' dark charcoal dialog box
+    at (751, 684) to (1733, 1017).
+    NEVER triggers if Home Page Green '+' or Upgrade Menu Red 'X' is visible!
+    """
+    if is_on_home_page_a14(img):
+        return False
+    if is_red_x_box_at(img, *UPGRADE_A14["CLOSE_MENU"], radius=14):
+        return False
+
     w, h = img.size
     px_map = img.load()
     ox1, oy1, ox2, oy2 = CONNECTION_LOST_OUTER_BOX
@@ -1109,10 +1134,10 @@ def _has_connection_lost_dark_box_pixels(img):
         for sx in range(max(0, ox1 + 35), min(w, ox2 - 35), 28):
             r, g, b = px_map[sx, sy]
             total_bg_px += 1
-            if (24 <= r <= 68) and (26 <= g <= 70) and (28 <= b <= 74) and (max(r, g, b) - min(r, g, b) <= 14):
+            if (26 <= r <= 64) and (28 <= g <= 66) and (30 <= b <= 70) and (max(r, g, b) - min(r, g, b) <= 12):
                 dark_slate_px += 1
 
-    if total_bg_px == 0 or (dark_slate_px / float(total_bg_px)) < 0.52:
+    if total_bg_px == 0 or (dark_slate_px / float(total_bg_px)) < 0.65:
         return False
 
     tx1, ty1, tx2, ty2 = CONNECTION_LOST_TEXT_BOX_LEFT
@@ -1120,7 +1145,7 @@ def _has_connection_lost_dark_box_pixels(img):
     for sy in range(max(0, ty1), min(h, ty2), 3):
         for sx in range(max(0, tx1), min(w, tx2), 4):
             r, g, b = px_map[sx, sy]
-            if r > 195 and g > 195 and b > 195 and (max(r, g, b) - min(r, g, b) <= 25):
+            if r > 200 and g > 200 and b > 200 and (max(r, g, b) - min(r, g, b) <= 22):
                 header_white_px += 1
 
     bx1, by1, bx2, by2 = TRY_AGAIN_BTN_BOX
@@ -1128,10 +1153,10 @@ def _has_connection_lost_dark_box_pixels(img):
     for sy in range(max(0, by1), min(h, by2), 3):
         for sx in range(max(0, bx1), min(w, bx2), 4):
             r, g, b = px_map[sx, sy]
-            if r > 195 and g > 195 and b > 195 and (max(r, g, b) - min(r, g, b) <= 25):
+            if r > 200 and g > 200 and b > 200 and (max(r, g, b) - min(r, g, b) <= 22):
                 btn_white_px += 1
 
-    return header_white_px >= 10 and btn_white_px >= 8
+    return header_white_px >= 12 and btn_white_px >= 10
 
 def _ocr_white_text_on_dark_box(img, box_coords):
     w, h = img.size
@@ -1152,7 +1177,7 @@ def _ocr_white_text_on_dark_box(img, box_coords):
     for py in range(uh):
         for px in range(uw):
             r, g, b = src[px, py]
-            if r > 165 and g > 165 and b > 165 and (max(r, g, b) - min(r, g, b) <= 35):
+            if r > 170 and g > 170 and b > 170 and (max(r, g, b) - min(r, g, b) <= 32):
                 dst[px, py] = 0
                 ink_px += 1
 
@@ -1162,8 +1187,13 @@ def _ocr_white_text_on_dark_box(img, box_coords):
     return pytesseract.image_to_string(padded, config="--oem 3 --psm 6").strip()
 
 def is_connection_lost_popup_visible_a14(img, force_ocr=False):
+    """
+    STRICT CONNECTION LOST VERIFIER:
+    Always requires the dark charcoal dialog box pixels to be present FIRST so it NEVER
+    falsely triggers on normal gameplay screens!
+    """
     has_pixels = _has_connection_lost_dark_box_pixels(img)
-    if not has_pixels and not force_ocr:
+    if not has_pixels:
         return False, ""
 
     header_txt = _ocr_white_text_on_dark_box(img, CONNECTION_LOST_TEXT_BOX_LEFT)
@@ -1172,17 +1202,11 @@ def is_connection_lost_popup_visible_a14(img, force_ocr=False):
     btn_txt = _ocr_white_text_on_dark_box(img, TRY_AGAIN_BTN_BOX)
 
     combined_clean = re.sub(r"[^a-zA-Z\s]", " ", f"{header_txt} {btn_txt}").lower()
-    keywords = ["connection", "conection", "lost", "try again", "try", "again", "server", "internet"]
-    matched_kw = any(kw in combined_clean for kw in keywords)
+    combined_clean = re.sub(r"\s+", " ", combined_clean).strip()
 
-    if matched_kw:
+    strict_phrases = ["connection lost", "conection lost", "try again", "connection", "conection", "lost connection"]
+    if any(phrase in combined_clean for phrase in strict_phrases):
         return True, f"Header='{header_txt}' | Button='{btn_txt}'"
-
-    if has_pixels:
-        full_txt = _ocr_white_text_on_dark_box(img, CONNECTION_LOST_OUTER_BOX)
-        full_clean = re.sub(r"[^a-zA-Z\s]", " ", full_txt).lower()
-        if any(kw in full_clean for kw in keywords):
-            return True, f"FullBox='{full_txt[:45]}'"
 
     return False, ""
 
@@ -1220,7 +1244,7 @@ def check_and_handle_connection_lost_a14(img=None, force_ocr=False):
 
             chk_img = _capture_raw_screenshot_once()
             if chk_img is not None:
-                still_lost, _ = is_connection_lost_popup_visible_a14(chk_img, force_ocr=True)
+                still_lost, _ = is_connection_lost_popup_visible_a14(chk_img, force_ocr=False)
                 if not still_lost:
                     smart_sleep(5.0, apply_speed=False)
                     chk_img2 = _capture_raw_screenshot_once()
@@ -1259,14 +1283,14 @@ def check_and_handle_connection_lost_a14(img=None, force_ocr=False):
             attempt += 1
             fresh_img = _capture_raw_screenshot_once()
             if fresh_img is not None:
-                _, ocr_info = is_connection_lost_popup_visible_a14(fresh_img, force_ocr=True)
+                _, ocr_info = is_connection_lost_popup_visible_a14(fresh_img, force_ocr=False)
                 if not ocr_info:
                     ocr_info = "Connection still offline / retrying reload"
     finally:
         _IN_CONN_LOST_HANDLER = False
 
 # ==========================================
-# 6. STRICT POPUP & SCREEN SCANNERS
+# 6. STRICT POPUP, GOBLIN BUILDER & SCREEN SCANNERS
 # ==========================================
 def is_red_x_box_at(img, cx, cy, radius=10):
     w, h = img.size
@@ -1283,6 +1307,160 @@ def is_red_x_box_at(img, cx, cy, radius=10):
             elif r > 215 and g > 215 and b > 215 and (max(r, g, b) - min(r, g, b) <= 25):
                 white_count += 1
     return red_count >= 7 and white_count >= 2
+
+def find_red_x_in_box_a14(img, box_coords):
+    """
+    Scans an entire rectangular box (x1, y1, x2, y2) for a Red 'X' close button.
+    Returns (True, click_x, click_y) if found, else (False, center_x, center_y).
+    """
+    w, h = img.size
+    px_map = img.load()
+    x1, y1, x2, y2 = box_coords
+    x1, x2 = max(0, min(x1, x2)), min(w - 1, max(x1, x2))
+    y1, y2 = max(0, min(y1, y2)), min(h - 1, max(y1, y2))
+
+    red_xs = []
+    red_ys = []
+    white_count = 0
+
+    for sy in range(y1, y2 + 1, 2):
+        for sx in range(x1, x2 + 1, 2):
+            r, g, b = px_map[sx, sy]
+            if r > 178 and g < 78 and b < 78 and (r > g + 105):
+                red_xs.append(sx)
+                red_ys.append(sy)
+            elif r > 210 and g > 210 and b > 210 and (max(r, g, b) - min(r, g, b) <= 28):
+                white_count += 1
+
+    if len(red_xs) >= 14 and white_count >= 3:
+        cx = sum(red_xs) // len(red_xs)
+        cy = sum(red_ys) // len(red_ys)
+        return True, cx, cy
+
+    return False, (x1 + x2) // 2, (y1 + y2) // 2
+
+def _ocr_dual_polarity_box(img, box_coords):
+    """
+    Runs both White-Text OCR and Dark-Text OCR on a given box so text is 100% read
+    whether it is white text on a dark header or dark text on a light parchment dialog!
+    """
+    w, h = img.size
+    x1, y1, x2, y2 = box_coords
+    x1, x2 = max(0, min(x1, x2)), min(w, max(x1, x2))
+    y1, y2 = max(0, min(y1, y2)), min(h, max(y1, y2))
+    if (x2 - x1) < 12 or (y2 - y1) < 10:
+        return ""
+
+    crop = img.crop((x1, y1, x2, y2))
+    upscaled = crop.resize((crop.width * 2, crop.height * 2), Image.Resampling.LANCZOS)
+    uw, uh = upscaled.size
+    src = upscaled.load()
+
+    # Pass 1: White/Bright Text Filter (e.g. "Chief!", "All Builders Busy", "Hire")
+    bw_white = Image.new("L", (uw, uh), 255)
+    dst_w = bw_white.load()
+    ink_w = 0
+
+    # Pass 2: Dark Text Filter (e.g. dark letters inside Goblin parchment box)
+    bw_dark = Image.new("L", (uw, uh), 255)
+    dst_d = bw_dark.load()
+    ink_d = 0
+
+    for py in range(uh):
+        for px in range(uw):
+            r, g, b = src[px, py]
+            if r > 185 and g > 185 and b > 185 and (max(r, g, b) - min(r, g, b) <= 38):
+                dst_w[px, py] = 0
+                ink_w += 1
+            if r < 105 and g < 105 and b < 105 and (max(r, g, b) - min(r, g, b) <= 40):
+                dst_d[px, py] = 0
+                ink_d += 1
+
+    out_texts = []
+    if ink_w >= 10:
+        pad_w = ImageOps.expand(bw_white, border=12, fill=255)
+        t_w = pytesseract.image_to_string(pad_w, config="--oem 3 --psm 6").strip()
+        if t_w:
+            out_texts.append(t_w)
+    if ink_d >= 10:
+        pad_d = ImageOps.expand(bw_dark, border=12, fill=255)
+        t_d = pytesseract.image_to_string(pad_d, config="--oem 3 --psm 6").strip()
+        if t_d:
+            out_texts.append(t_d)
+
+    return " ".join(out_texts).strip().lower()
+
+def check_goblin_builder_popup_a14(img=None):
+    """
+    100% RELIABLE GOBLIN BUILDER DETECTOR & CUTTER:
+      1. Scans the entire GOBLIN_RED_X_BOX (1927, 209, 1996, 266) + wider popup close area (1910, 195, 2012, 280).
+      2. Runs Dual-Polarity (White + Dark text) LANCZOS 2x OCR on:
+         - GOBLIN_CHIEF_BOX (1420, 203, 1714, 282)
+         - GOBLIN_LETTER_BOX (1154, 330, 1980, 493)
+      3. If called right after an upgrade confirm click and the popup is still animating (0.22s),
+         automatically re-checks once so Goblin Builder is NEVER missed!
+      4. Sets LAST_GOBLIN_DETECTED = True whenever Goblin Builder is detected.
+    """
+    global LAST_GOBLIN_DETECTED
+
+    for pass_idx in range(2):
+        if pass_idx == 0 and img is not None:
+            cur_img = img
+        else:
+            cur_img = get_screenshot(force_fresh=True)
+
+        # 1. Check Red 'X' inside Goblin Red X Box (1927, 209, 1996, 266) and slightly padded box
+        rx_found, click_rx, click_ry = find_red_x_in_box_a14(cur_img, (1915, 198, 2008, 276))
+        if not rx_found:
+            rx_default, ry_default = UPGRADE_A14["GOBLIN_RED_X_CLICK"]
+            if is_red_x_box_at(cur_img, rx_default, ry_default, radius=14):
+                rx_found = True
+                click_rx, click_ry = rx_default, ry_default
+
+        # 2. Check Dual-Polarity OCR on Goblin Chief Box & Goblin Letter Box
+        chief_txt = _ocr_dual_polarity_box(cur_img, UPGRADE_A14["GOBLIN_CHIEF_BOX"])
+        letter_txt = _ocr_dual_polarity_box(cur_img, UPGRADE_A14["GOBLIN_LETTER_BOX"])
+        combined_txt = re.sub(r"[^a-z0-9\s]", " ", f"{chief_txt} {letter_txt}").lower()
+
+        goblin_keywords = [
+            "chief", "goblin", "busy", "builder", "builders", "gems",
+            "extra", "hire", "work", "assist", "available", "all builders"
+        ]
+        matched_ocr = any(kw in combined_txt for kw in goblin_keywords)
+
+        # 3. Also check if a centered Goblin / Gem dialog with Red 'X' at (1589, 339) or (1685, 215) has Goblin text
+        alt_rx_found, alt_x, alt_y = find_red_x_in_box_a14(cur_img, (1555, 185, 1900, 365))
+        if alt_rx_found and not matched_ocr:
+            center_txt = _ocr_dual_polarity_box(cur_img, (820, 200, 1650, 520))
+            if any(kw in center_txt for kw in ["goblin", "chief", "busy", "hire"]):
+                matched_ocr = True
+                combined_txt = center_txt
+
+        if rx_found or matched_ocr:
+            LAST_GOBLIN_DETECTED = True
+            target_x, target_y = (click_rx, click_ry) if rx_found else UPGRADE_A14["GOBLIN_RED_X_CLICK"]
+            print(f" [!] [GOBLIN BUILDER DETECTED] OCR='{combined_txt[:45].strip()}' | RedX={rx_found} -> Cutting at ({target_x}, {target_y})...")
+            tap(target_x, target_y, delay_range=(0.18, 0.28), jitter=3)
+            human_sleep(0.38, 0.05)
+
+            # Verify popup is gone; if an alternate Red X is still visible, cut it too
+            chk_after = get_screenshot(force_fresh=True)
+            still_rx, sx2, sy2 = find_red_x_in_box_a14(chk_after, (1915, 198, 2008, 276))
+            if still_rx:
+                tap(sx2, sy2, delay_range=(0.15, 0.25), jitter=2)
+                human_sleep(0.30, 0.04)
+            elif alt_rx_found and is_red_x_box_at(chk_after, alt_x, alt_y, radius=12):
+                tap(alt_x, alt_y, delay_range=(0.15, 0.25), jitter=2)
+                human_sleep(0.30, 0.04)
+
+            record_stat("goblin_popups_cut", 1)
+            return True
+
+        # Wait 0.22s once in case the Goblin popup was mid-animation after clicking Confirm
+        if pass_idx == 0:
+            human_sleep(0.22, 0.03)
+
+    return False
 
 def is_on_home_page_a14(img=None):
     """Checks (2050, 285) and (2050, 250) for the green box with a white '+' sign."""
@@ -1387,551 +1565,4 @@ def check_welcome_back_chief_a14(img=None):
     print(" [!] [WELCOME BACK CHIEF] Red Banner + Green Button verified! Clicking (1227, 932)...")
     tap(*WELCOME_CHIEF_CLICK_COORD, delay_range=(0.15, 0.25), jitter=3)
     human_sleep(0.35, 0.05)
-    record_stat("welcome_chief_closed", 1)
-    return True
-
-def _analyze_daily_reward_slot(px_map, w, h, x1, y1, x2, y2):
-    green_vals = []
-    gray_dark_px = 0
-    total_px = 0
-    for sy in range(max(0, y1 + 3), min(h, y2 - 2), 2):
-        for sx in range(max(0, x1 + 6), min(w, x2 - 5), 4):
-            r, g, b = px_map[sx, sy]
-            total_px += 1
-            if g > 145 and g > (r + 35) and g > (b + 40) and r < 165 and b < 140:
-                green_vals.append(g)
-            elif (45 <= r <= 145) and (45 <= g <= 145) and (45 <= b <= 155) and (max(r, g, b) - min(r, g, b) <= 32):
-                gray_dark_px += 1
-
-    if total_px == 0:
-        return "OTHER", 0.0
-
-    green_ratio = len(green_vals) / float(total_px)
-    if green_ratio >= 0.68 and len(green_vals) >= 12:
-        mean_g = sum(green_vals) / float(len(green_vals))
-        mean_dev = sum(abs(v - mean_g) for v in green_vals) / float(len(green_vals))
-        if mean_dev <= 16.5:
-            return "FLAT_GREEN", green_ratio
-
-    gray_ratio = gray_dark_px / float(total_px)
-    if gray_ratio >= 0.55:
-        return "MODAL_GRAY", gray_ratio
-
-    return "OTHER", 0.0
-
-def check_daily_reward_popup(img=None):
-    if img is None:
-        img = get_screenshot()
-
-    if is_on_home_page_a14(img):
-        return False
-    if is_red_x_box_at(img, *UPGRADE_A14["CLOSE_MENU"], radius=14):
-        return False
-
-    w, h = img.size
-    px_map = img.load()
-
-    close_x, close_y = DAILY_REWARD_CLOSE_BTN
-    has_close_red_x = is_red_x_box_at(img, close_x, close_y, radius=13)
-
-    flat_green_boxes = []
-    modal_gray_count = 0
-
-    for idx, (bx1, by1, bx2, by2) in enumerate(DAILY_REWARD_GREEN_BOXES, start=1):
-        slot_type, _ = _analyze_daily_reward_slot(px_map, w, h, bx1, by1, bx2, by2)
-        if slot_type == "FLAT_GREEN":
-            flat_green_boxes.append((idx, (bx1 + bx2) // 2, (by1 + by2) // 2))
-        elif slot_type == "MODAL_GRAY":
-            modal_gray_count += 1
-
-    is_valid_board = has_close_red_x or (1 <= len(flat_green_boxes) <= 3 and modal_gray_count >= 4)
-    if not is_valid_board:
-        return False
-
-    print(f" [DAILY REWARD VERIFIED] GreenSlots={len(flat_green_boxes)}, GraySiblingSlots={modal_gray_count}, RedX_Before={has_close_red_x}")
-
-    for idx, cx, cy in flat_green_boxes:
-        print(f" [+] [DAILY REWARD] Clicking Green Box #{idx} at ({cx}, {cy})...")
-        tap(cx, cy, delay_range=(0.15, 0.25), jitter=3)
-        human_sleep(0.45, 0.06)
-
-    print(f" [x] [DAILY REWARD] Clicking Top-Right Red 'X' Button ({close_x}, {close_y})...")
-    tap(close_x, close_y, delay_range=(0.15, 0.25), jitter=3)
-    human_sleep(0.30, 0.05)
-    record_stat("daily_rewards_claimed", 1)
-    return True
-
-def check_and_handle_maintenance_break(img=None):
-    if img is None:
-        img = get_screenshot()
-
-    check_and_handle_connection_lost_a14(img, force_ocr=False)
-
-    def _is_maintenance_banner_visible(cur_img):
-        w, h = cur_img.size
-        px_map = cur_img.load()
-        mx1, my1, mx2, my2 = MAINTENANCE_BREAK_BOX
-        yellow_px = 0
-        black_px = 0
-        total_px = 0
-        for sy in range(max(0, my1), min(h, my2), 2):
-            for sx in range(max(0, mx1), min(w, mx2), 3):
-                r, g, b = px_map[sx, sy]
-                total_px += 1
-                if r > 185 and g > 145 and b < 95 and (r + g) > (b * 3):
-                    yellow_px += 1
-                elif r < 80 and g < 80 and b < 80:
-                    black_px += 1
-
-        if total_px == 0 or (yellow_px / total_px) < 0.25 or black_px < 12:
-            return False, ""
-
-        crop = cur_img.crop((mx1, my1, mx2, my2))
-        upscaled = crop.resize((crop.width * 2, crop.height * 2), Image.Resampling.LANCZOS)
-        uw, uh = upscaled.size
-        u_src = upscaled.load()
-        bw = Image.new("L", (uw, uh), 255)
-        u_dst = bw.load()
-        for py in range(uh):
-            for px in range(uw):
-                r, g, b = u_src[px, py]
-                if r < 95 and g < 95 and b < 95:
-                    u_dst[px, py] = 0
-        padded = ImageOps.expand(bw, border=12, fill=255)
-        cfg = "--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ "
-        txt = pytesseract.image_to_string(padded, config=cfg).strip().upper()
-        clean_t = re.sub(r"[^A-Z]", "", txt)
-        if "MAINT" in clean_t or "TENANCE" in clean_t or "BREAK" in clean_t:
-            return True, txt
-        return False, txt
-
-    is_maint, read_txt = _is_maintenance_banner_visible(img)
-    if not is_maint:
-        return False
-
-    record_stat("maintenance_breaks", 1)
-    cycle_idx = 1
-    while True:
-        print("\n======================================================================")
-        print(f"|| [MAINTENANCE BREAK VERIFIED] Read: '{read_txt}' at (979,16..1442,63) ||")
-        print(f"|| [REST #{cycle_idx}] Bot 10 Minute (600s) ke rest par ja raha hai...        ||")
-        print("======================================================================\n")
-
-        smart_sleep(MAINTENANCE_REST_SEC, apply_speed=False)
-
-        print(f" [MAINTENANCE CHECK #{cycle_idx}] 10 Min complete! Clicking (1210, 39) 2 times...")
-        tap(*MAINTENANCE_CLICK_COORD, delay_range=(0.15, 0.25), jitter=3, apply_speed=False)
-        tap(*MAINTENANCE_CLICK_COORD, delay_range=(0.15, 0.25), jitter=3, apply_speed=False)
-        smart_sleep(5.0, apply_speed=False)
-
-        chk_img = get_screenshot(force_fresh=True)
-        check_wrong_buttons_a14(chk_img)
-        still_maint, read_txt = _is_maintenance_banner_visible(chk_img)
-        if not still_maint:
-            print(" [✔] [MAINTENANCE OVER] Maintenance Break khatam ho gaya hai! Resuming Bot...")
-            return True
-        cycle_idx += 1
-
-def check_wrong_buttons_a14(img=None, check_clan_chat=False):
-    if img is None:
-        img = get_screenshot()
-    clicked_any = False
-
-    if check_and_handle_connection_lost_a14(img, force_ocr=False):
-        clicked_any = True
-        img = get_screenshot(force_fresh=True)
-
-    if check_clan_chat:
-        if check_clan_chat_drawer_a14(img, use_build_fallback=False):
-            clicked_any = True
-            img = get_screenshot(force_fresh=True)
-
-    if is_on_home_page_a14(img):
-        return clicked_any
-
-    for label, x, y in WRONG_BUTTON_CUT_COORDS:
-        if is_red_x_box_at(img, x, y, radius=11):
-            print(f" [!] [WRONG BUTTON CUT] '{label}' ({x}, {y}) par Red 'X' mila! Cut kar rahe hain...")
-            tap(x, y, delay_range=(0.10, 0.18), jitter=2)
-            clicked_any = True
-            record_stat("wrong_buttons_cut", 1)
-            human_sleep(0.12, 0.03)
-            img = get_screenshot(force_fresh=True)
-            if is_on_home_page_a14(img):
-                break
-
-    return clicked_any
-
-def check_wrong_and_home_page_a14(img=None, check_clan_chat=False):
-    if img is None:
-        img = get_screenshot()
-
-    if check_and_handle_connection_lost_a14(img, force_ocr=False):
-        img = get_screenshot(force_fresh=True)
-
-    if check_clan_chat and check_clan_chat_drawer_a14(img, use_build_fallback=False):
-        img = get_screenshot(force_fresh=True)
-
-    if is_on_home_page_a14(img):
-        return False, True, img
-
-    was_cut = check_wrong_buttons_a14(img, check_clan_chat=False)
-    if was_cut:
-        img = get_screenshot(force_fresh=True)
-    is_home = is_on_home_page_a14(img)
-    return was_cut, is_home, img
-
-def run_zone1_post_id_switch_checks(img=None):
-    if img is None:
-        img = get_screenshot(force_fresh=True)
-
-    if check_and_handle_connection_lost_a14(img, force_ocr=False):
-        img = get_screenshot(force_fresh=True)
-
-    if is_on_home_page_a14(img):
-        if check_clan_chat_drawer_a14(img, use_build_fallback=False):
-            img = get_screenshot(force_fresh=True)
-        return False, True, img
-
-    acted = False
-    if check_welcome_back_chief_a14(img):
-        acted = True
-        img = get_screenshot(force_fresh=True)
-
-    if not is_on_home_page_a14(img) and check_daily_reward_popup(img):
-        acted = True
-        img = get_screenshot(force_fresh=True)
-
-    if not is_on_home_page_a14(img) and check_wrong_buttons_a14(img, check_clan_chat=True):
-        acted = True
-        img = get_screenshot(force_fresh=True)
-
-    is_home = is_on_home_page_a14(img)
-    return acted, is_home, img
-
-def run_zone2_home_periodic_checks(img=None):
-    global _LAST_CONN_LOST_OCR_TIME
-    if img is None:
-        img = get_screenshot()
-
-    do_periodic_ocr = ((time.time() - _LAST_CONN_LOST_OCR_TIME) >= CONNECTION_OCR_INTERVAL_SEC)
-    if check_and_handle_connection_lost_a14(img, force_ocr=do_periodic_ocr):
-        img = get_screenshot(force_fresh=True)
-
-    check_and_handle_maintenance_break(img)
-    if check_clan_chat_drawer_a14(img, use_build_fallback=False):
-        img = get_screenshot(force_fresh=True)
-    if not is_on_home_page_a14(img):
-        if check_daily_reward_popup(img):
-            img = get_screenshot(force_fresh=True)
-        if check_wrong_buttons_a14(img, check_clan_chat=False):
-            img = get_screenshot(force_fresh=True)
-    return is_on_home_page_a14(img), img
-
-def ensure_return_to_home_page_a14():
-    print(" [*] [HOME RECOVERY] Ensuring bot is cleanly on the Home Page...")
-    for attempt in range(1, 4):
-        img = get_screenshot(check_pause=False, force_fresh=True)
-        if check_and_handle_connection_lost_a14(img, force_ocr=(attempt >= 2)):
-            img = get_screenshot(check_pause=False, force_fresh=True)
-        check_and_handle_maintenance_break(img)
-
-        if is_on_home_page_a14(img):
-            check_clan_chat_drawer_a14(img, use_build_fallback=False)
-            double_click_storage_bars()
-            return True
-
-        if is_red_x_box_at(img, *UPGRADE_A14["CLOSE_MENU"], radius=14):
-            tap(*UPGRADE_A14["CLOSE_MENU"], delay_range=(0.15, 0.25), jitter=3, check_pause=False)
-            human_sleep(0.32, 0.04, apply_speed=True)
-            continue
-
-        check_welcome_back_chief_a14(img)
-        check_daily_reward_popup(img)
-        check_clan_chat_drawer_a14(img, use_build_fallback=(attempt >= 2))
-        check_wrong_buttons_a14(img)
-
-        tap(*FAST_ATTACK["RETURN_HOME_BTN"], delay_range=(0.10, 0.18), jitter=3, check_pause=False)
-        double_click_storage_bars()
-        human_sleep(0.45, 0.05, apply_speed=True)
-
-    record_stat("stuck_recoveries", 1)
-    return is_on_home_page_a14()
-
-def click_gold_storage_3_times():
-    print(" [*] [HOME PAGE] Gold Storage Bar (2170, 63) par 3 baar click kar rahe hain...")
-    batch_tap_sequence([GOLD_STORAGE_BAR] * 3, inter_delay=0.04, jitter=2)
-
-def double_click_storage_bars():
-    global LAST_HOME_CLEANUP_TIME
-    batch_tap_sequence(
-        [GOLD_STORAGE_BAR, GOLD_STORAGE_BAR, ELIXIR_STORAGE_BAR, ELIXIR_STORAGE_BAR],
-        inter_delay=0.04,
-        jitter=2
-    )
-    LAST_HOME_CLEANUP_TIME = time.time()
-
-def perform_home_cleanup_once(max_age_sec=1.5):
-    global LAST_HOME_CLEANUP_TIME
-    if (time.time() - LAST_HOME_CLEANUP_TIME) <= max_age_sec:
-        return False
-    img = get_screenshot()
-    check_wrong_buttons_a14(img, check_clan_chat=True)
-    double_click_storage_bars()
-    LAST_HOME_CLEANUP_TIME = time.time()
-    return True
-
-def check_resources_full_for_upgrade(img=None):
-    if img is None:
-        img = get_screenshot()
-
-    def _scan_storage_bars(cur_img):
-        px_map = cur_img.load()
-        gx1, gy1, gx2, gy2 = GOLD_STORAGE_CHECK_BOX
-        gold_total, gold_colored = 0, 0
-        for y in range(gy1, gy2, 2):
-            for x in range(gx1, gx2, 2):
-                r, g, b = px_map[x, y]
-                if r > 215 and g > 215 and b > 215:
-                    continue
-                gold_total += 1
-                if r > 165 and g > 125 and b < 95 and (r + g) > (b * 3):
-                    gold_colored += 1
-        g_ratio = (gold_colored / gold_total) if gold_total > 0 else 0.0
-
-        ex1, ey1, ex2, ey2 = ELIXIR_STORAGE_CHECK_BOX
-        elixir_total, elixir_colored = 0, 0
-        for y in range(ey1, ey2, 2):
-            for x in range(ex1, ex2, 2):
-                r, g, b = px_map[x, y]
-                if r > 215 and g > 215 and b > 215:
-                    continue
-                elixir_total += 1
-                if r > 145 and b > 110 and r > (g + 25):
-                    elixir_colored += 1
-        e_ratio = (elixir_colored / elixir_total) if elixir_total > 0 else 0.0
-        return g_ratio, e_ratio
-
-    gold_ratio, elixir_ratio = _scan_storage_bars(img)
-
-    if gold_ratio < 0.05 and elixir_ratio < 0.05 and not is_on_home_page_a14(img):
-        print(" [!] [STORAGE ANTI-COVER GUARD] Storage bars hidden by overlay! Recovering Home Page & re-scanning...")
-        ensure_return_to_home_page_a14()
-        img = get_screenshot(force_fresh=True)
-        gold_ratio, elixir_ratio = _scan_storage_bars(img)
-
-    is_gold_full = gold_ratio >= 0.45
-    is_elixir_full = elixir_ratio >= 0.45
-    print(f" [i] [STORAGE SCAN] Gold Yellow: {gold_ratio*100:.0f}% (Full={is_gold_full}) | Elixir Pink: {elixir_ratio*100:.0f}% (Full={is_elixir_full})")
-    return is_gold_full or is_elixir_full
-
-def check_wall_resources_full_a14(img=None):
-    return check_resources_full_for_upgrade(img=img)
-
-# ==========================================
-# 7. BUILDER / FRACTION READER, GOBLIN BUILDER & DYNAMIC ARMY CARD SCANNERS
-# ==========================================
-def parse_builder_fraction(raw_text):
-    if not raw_text:
-        return None
-    s = raw_text.strip().replace(" ", "")
-    s = re.sub(r'^[|Il!i](?=/\d)', '1', s)
-    s = re.sub(r'(?<=\d)[|Il!i](?=[56789]\b|10\b)', '/', s)
-
-    if '/' in s:
-        parts = s.split('/', 1)
-        left = parts[0].strip()
-        left = re.sub(r'[|Il!i]', '1', left)
-        if not left:
-            return None
-        digits = re.sub(r'[^0-9]', '', left)
-        if digits:
-            if digits.endswith("10"):
-                return 10
-            val = int(digits[-1])
-            if 0 <= val <= 10:
-                return val
-        return None
-
-    digits_only = re.sub(r'[^0-9]', '', s)
-    if len(digits_only) == 3 and digits_only[1] in ['1', '7'] and digits_only[2] in ['5', '6', '7', '8', '9']:
-        return int(digits_only[0])
-    if len(digits_only) == 2 and digits_only[1] in ['5', '6', '7', '8', '9']:
-        return int(digits_only[0])
-    return None
-
-def read_fraction_box_a14(img, box_coords, label="FRACTION"):
-    """Reads any builder/spell/pet fraction box (e.g. 1/6, 1/1) using LANCZOS 3x OCR."""
-    if img is None:
-        img = get_screenshot()
-    x1, y1, x2, y2 = box_coords
-    w = x2 - x1
-    crop = img.crop((x1 - 2, y1 - 2, x2 + 2, y2 + 2))
-    large = crop.resize((crop.width * 3, crop.height * 3), Image.Resampling.LANCZOS).convert('L')
-    cfg = '--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789/|Il!'
-
-    for thresh in [180, 168, 192]:
-        bw = large.point(lambda p: 0 if p > thresh else 255, '1').convert('L')
-        padded = ImageOps.expand(bw, border=14, fill=255)
-        txt = pytesseract.image_to_string(padded, config=cfg).strip()
-        val = parse_builder_fraction(txt)
-        if val is not None:
-            print(f" [i] [{label} OCR] Box {box_coords} Read: '{txt}' -> {val} Free")
-            return val
-
-    left_crop = img.crop((x1 - 2, y1, x1 + int(w * 0.44), y2))
-    l_large = left_crop.resize((left_crop.width * 3, left_crop.height * 3), Image.Resampling.LANCZOS).convert('L')
-    l_bw = ImageOps.expand(l_large.point(lambda p: 0 if p > 175 else 255, '1').convert('L'), border=14, fill=255)
-    l_txt = pytesseract.image_to_string(
-        l_bw,
-        config='--oem 3 --psm 10 -c tessedit_char_whitelist=0123456789|Il!'
-    ).strip()
-    if l_txt in ['|', 'I', 'l', '!']:
-        print(f" [i] [{label} LEFT-OCR] Read '{l_txt}' -> 1 Free")
-        return 1
-    clean_d = re.sub(r'[^0-9]', '', l_txt)
-    if clean_d:
-        val = 10 if clean_d.startswith("10") else int(clean_d[0])
-        print(f" [i] [{label} LEFT-OCR] Read '{l_txt}' -> {val} Free")
-        return val
-    return 0
-
-def read_builder_check_box_a14(img=None):
-    global LAST_DETECTED_BUILDERS, LAST_BUILDER_CHECK_TIME
-    if img is None:
-        img = get_screenshot()
-    val = read_fraction_box_a14(img, UPGRADE_A14["BUILDER_CHECK_BOX"], label="BUILDER")
-    LAST_DETECTED_BUILDERS = val
-    LAST_BUILDER_CHECK_TIME = time.time()
-    return val
-
-def check_goblin_builder_popup_a14(img=None):
-    """
-    GOBLIN BUILDER DETECTOR (Rejected Time-Cut #T3 -> Runs Direct OCR + Red X Check):
-    Verifies if the Goblin Builder popup appeared after clicking an upgrade confirm button.
-    If detected, clicks (1961, 237) to close it and returns True.
-    """
-    if img is None:
-        img = get_screenshot()
-
-    rx, ry = UPGRADE_A14["GOBLIN_RED_X_CLICK"]
-    has_red_x = is_red_x_box_at(img, rx, ry, radius=13)
-
-    def _ocr_goblin_box(box):
-        x1, y1, x2, y2 = box
-        crop = img.crop((x1, y1, x2, y2))
-        upscaled = crop.resize((crop.width * 2, crop.height * 2), Image.Resampling.LANCZOS).convert('L')
-        bw = upscaled.point(lambda p: 0 if p > 150 else 255, '1').convert('L')
-        padded = ImageOps.expand(bw, border=12, fill=255)
-        return pytesseract.image_to_string(padded, config='--oem 3 --psm 6').strip().lower()
-
-    chief_txt = _ocr_goblin_box(UPGRADE_A14["GOBLIN_CHIEF_BOX"])
-    letter_txt = _ocr_goblin_box(UPGRADE_A14["GOBLIN_LETTER_BOX"])
-    combined = f"{chief_txt} {letter_txt}"
-
-    goblin_keywords = ["chief", "goblin", "busy", "builder", "gems", "extra", "hire", "work"]
-    matched_ocr = any(kw in combined for kw in goblin_keywords)
-
-    if matched_ocr or has_red_x:
-        print(f" [!] [GOBLIN BUILDER DETECTED] OCR='{combined[:35].strip()}' | RedX={has_red_x} -> Clicking Red 'X' at ({rx}, {ry})...")
-        tap(rx, ry, delay_range=(0.18, 0.28), jitter=3)
-        human_sleep(0.42, 0.05)
-        record_stat("goblin_popups_cut", 1)
-        return True
-    return False
-
-def scan_colorful_army_cards_a14(img=None, scan_box=None):
-    """
-    Scans the bottom army deployment bar (355, 884 to 2213, 1071) for colorful (active) cards.
-    Ignores empty dashed slots and grayed-out depleted cards using RGB saturation.
-    Returns a list of (center_x, 980) coordinates for all colorful cards.
-    """
-    if img is None:
-        img = get_screenshot()
-    if scan_box is None:
-        scan_box = FAST_ATTACK["ARMY_CARD_SCAN_BOX"]
-
-    w, h = img.size
-    px_map = img.load()
-    cx1, cy1, cx2, cy2 = scan_box
-
-    expected_centers = [456 + (i * 141) for i in range(13)]
-    colorful_centers = []
-
-    for center_x in expected_centers:
-        if center_x > cx2:
-            break
-        colorful_px = 0
-        total_px = 0
-        for dy in range(-22, 23, 4):
-            for dx in range(-22, 23, 4):
-                px = min(max(0, center_x + dx), w - 1)
-                py = min(max(0, 980 + dy), h - 1)
-                r, g, b = px_map[px, py]
-                total_px += 1
-                if (max(r, g, b) - min(r, g, b)) > 34 and max(r, g, b) > 105:
-                    colorful_px += 1
-
-        if (colorful_px / float(max(1, total_px))) >= 0.32:
-            colorful_centers.append((center_x, 980))
-
-    return colorful_centers
-
-def is_text_matching_wall(raw_text):
-    if not raw_text:
-        return False
-    cleaned = re.sub(r'[^a-zA-Z0-9\s]', '', raw_text).lower()
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    if not cleaned:
-        return False
-
-    non_wall_w_words = ["wizard", "workshop", "warden", "watch", "witch", "weap", "war"]
-    if any(nw in cleaned for nw in non_wall_w_words):
-        return False
-
-    first_token = cleaned.split()[0]
-    wall_regexes = [
-        r'^wall',
-        r'^wa[l1i!|]{1,3}$',
-        r'^w[a4o][l1i!|]{1,3}$',
-        r'^vv?a[l1i!|]{1,2}$',
-        r'^w[l1i!|]{2,3}$',
-        r'\bwall\b',
-        r'\bwalls\b',
-        r'\bwali\b',
-        r'\bwail\b',
-        r'\bwa11\b',
-        r'\bwal1\b',
-        r'\bwa1l\b',
-        r'\bwal\b'
-    ]
-    return any(re.search(pat, first_token) or re.search(pat, cleaned) for pat in wall_regexes)
-
-def verify_wall_name_box_a14(img=None):
-    return True, "Wall"
-
-def classify_building_name_a14(raw_ocr_text):
-    if not raw_ocr_text:
-        return "UNKNOWN", ""
-    cleaned = re.sub(r'[^a-zA-Z0-9\s\-]', '', raw_ocr_text)
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    base_name = re.sub(r'\b[xX]\s*\d+.*$', '', cleaned).strip()
-    if not base_name:
-        base_name = cleaned
-    lower = base_name.lower().strip()
-    if len(lower) < 2:
-        return "UNKNOWN", base_name
-    if is_text_matching_wall(lower) or is_text_matching_wall(cleaned):
-        return "WALL", "Wall"
-    for ex in CONDITION_1_EXCLUDED:
-        if ex in lower:
-            if ex == "archer" and "tower" in lower:
-                continue
-            return "EXCLUDED", base_name
-    for known in KNOWN_BUILDINGS:
-        if known in lower:
-            return "BUILDING", known.title()
-    alpha_only = re.sub(r'[^a-zA-Z]', '', lower)
-    if len(alpha_only) >= 3:
-        return "BUILDING", base_name
-    return "UNKNOWN", base_name
+    record_stat("welcome_chief_closed", 
