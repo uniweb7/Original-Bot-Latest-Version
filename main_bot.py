@@ -198,7 +198,7 @@ def open_advance_features_menu():
         print(" [!] Galat input! Kripya A se Y ke beech ka letter (jaise A, B, C, D, E...) type karein.")
 
 # ==========================================
-# 3. OPERATING MODE CONFIGURATION MENU
+# 3. OPERATING MODE CONFIGURATION MENU (MODES 1 TO 15)
 # ==========================================
 
 def select_bot_configuration():
@@ -209,7 +209,7 @@ def select_bot_configuration():
         print("==============================================================================")
         print(f" || Active Game Speed Multiplier : {cur_spd:.2f}x {'(Standard Default)' if abs(cur_spd - 1.0) < 0.005 else '(Root Speed-Up Active!)'}")
         print("------------------------------------------------------------------------------")
-        print(" || Select Bot Operating Mode (1 to 14):                                     ||")
+        print(" || Select Bot Operating Mode (1 to 15):                                     ||")
         print(" || [1]  -> Fast Attack Only                 (सिर्फ फास्ट अटैक - Infinity)      ||")
         print(" || [2]  -> Combined Building & Wall Only    (बिल्डिंग + वॉल अपग्रेड - 1m Gap)  ||")
         print(" || [3]  -> Combined Special Upgrade Only    (Spells + Pets + Equipments)    ||")
@@ -224,6 +224,7 @@ def select_bot_configuration():
         print(" || [12] -> 3-Wave Builder-Zero Dominator    (3x [4 Atk + Upg], Exit on 0)   ||")
         print(" || [13] -> Overnight Marathon Mode          (20 Min Continuous Loop per ID) ||")
         print(" || [14] -> Create Options (Custom Builder)  (1+3 / 1+2 / 5 Atk+Bld+Wall+3x) ||")
+        print(" || [15] -> Direct Full Upg + 5 Atk + Full Upg (No Storage Check -> Switch)  ||")
         print("==============================================================================")
         print(" || Live Controls Inside Termux:                                             ||")
         print(" || Pause & Show Progress Report : Type 'ZX' (or 'zx') anytime               ||")
@@ -231,7 +232,7 @@ def select_bot_configuration():
         print(" || Stop & Final Progress Report : Press Ctrl+C anytime                      ||")
         print("==============================================================================")
 
-        choice = input("\n Apna Option type karein (1 se 14) [Default=7]: ").strip()
+        choice = input("\n Apna Option type karein (1 se 15) [Default=7]: ").strip()
         if choice == "":
             choice = "7"
 
@@ -239,9 +240,9 @@ def select_bot_configuration():
             open_advance_features_menu()
             continue
 
-        if choice in [str(i) for i in range(1, 15) if i != 8]:
+        if choice in [str(i) for i in range(1, 16) if i != 8]:
             break
-        print(" [!] Galat input! Kripya 1 se 14 ke beech ka number type karein.")
+        print(" [!] Galat input! Kripya 1 se 15 ke beech ka number type karein.")
 
     custom_cfg = load_custom_preset()
     if choice == "14":
@@ -260,7 +261,8 @@ def select_bot_configuration():
         "11": "MODE 11: SMART LOOT-FIRST TURBO (Upgrade -> 5 Attacks -> Upgrade -> Switch)",
         "12": "MODE 12: 3-WAVE BUILDER-ZERO DOMINATOR (3x [4 Atk + Upgrade], Exit on 0 Builders)",
         "13": "MODE 13: OVERNIGHT MARATHON MODE (20 Min Continuous Attack+Upgrade per ID)",
-        "14": f"MODE 14: CUSTOM ({custom_cfg['combo_type']} | {custom_cfg['attacks_per_round']} Atk | {custom_cfg['upgrade_order']} | {custom_cfg['rounds_per_id']}x Rounds)"
+        "14": f"MODE 14: CUSTOM ({custom_cfg['combo_type']} | {custom_cfg['attacks_per_round']} Atk | {custom_cfg['upgrade_order']} | {custom_cfg['rounds_per_id']}x Rounds)",
+        "15": "MODE 15: DIRECT FULL UPGRADE (Bld+Wall+Equip) -> 5 FAST ATTACKS -> DIRECT FULL UPGRADE -> ID SWITCH"
     }
     print(f"\n [✔] Selected Mode: [{choice}] -> {mode_names[choice]} | Speed: {get_bot_speed_multiplier():.2f}x")
 
@@ -268,7 +270,7 @@ def select_bot_configuration():
     start_id_index = 1
     fast_mode_attacks_per_id = 5
 
-    needs_id_config = (choice in ["5", "6", "7", "9", "10", "11", "12", "13"]) or (choice == "14" and "3" in custom_cfg["combo_type"])
+    needs_id_config = (choice in ["5", "6", "7", "9", "10", "11", "12", "13", "15"]) or (choice == "14" and "3" in custom_cfg["combo_type"])
     if needs_id_config:
         mem = load_id_memory()
         default_total = mem.get("total_ids", 10)
@@ -748,6 +750,59 @@ def main_loop():
                 runtime_state["phase"] = "START_CYCLE"
                 runtime_state["attacks_done"] = 0
 
+            # ---------------------------------------------------------
+            # MODE 15: DIRECT FULL UPGRADE -> 5 FAST ATTACKS -> DIRECT FULL UPGRADE -> ID SWITCH
+            # (Bina Resource/Storage Check kiye 100% Accuracy ke sath Fast Full Upgrade!)
+            # ---------------------------------------------------------
+            elif bot_mode == "15":
+                if runtime_state["phase"] in ["START_CYCLE", "M15_DIRECT_UPGRADE_1"]:
+                    runtime_state["phase"] = "M15_DIRECT_UPGRADE_1"
+                    print(f"\n [MODE 15 | STEP 1/4] ID #{active_id} Open hote hi Bina Resource Check kiye Direct Full Upgrade (Building + Wall + Equipment) start kar rahe hain...")
+                    perform_home_cleanup_once(max_age_sec=1.5)
+                    run_full_smart_upgrade_sequence(
+                        do_bldg=True,
+                        do_wall=True,
+                        do_spell=True,
+                        do_pet=True,
+                        do_equip=True,
+                        stop_builders=0
+                    )
+                    runtime_state["phase"] = "M15_FAST_ATTACKS_5"
+                    runtime_state["attacks_done"] = 0
+
+                if runtime_state["phase"] == "M15_FAST_ATTACKS_5":
+                    print(f"\n [MODE 15 | STEP 2/4] First Full Upgrade complete! Ab turant 5 Fast Attacks start kar rahe hain...")
+                    run_n_fast_attacks_with_resume_memory(
+                        runtime_state,
+                        target_attacks=5,
+                        phase_label=f"MODE 15 | ID #{active_id} (5 FAST ATTACKS)"
+                    )
+                    runtime_state["phase"] = "M15_DIRECT_UPGRADE_2"
+                    runtime_state["attacks_done"] = 0
+
+                if runtime_state["phase"] == "M15_DIRECT_UPGRADE_2":
+                    print(f"\n [MODE 15 | STEP 3/4] 5 Fast Attacks complete! Ab Bina Resource Check kiye 2nd Direct Full Upgrade (Building + Wall + Equipment) start kar rahe hain...")
+                    perform_home_cleanup_once(max_age_sec=1.5)
+                    run_full_smart_upgrade_sequence(
+                        do_bldg=True,
+                        do_wall=True,
+                        do_spell=True,
+                        do_pet=True,
+                        do_equip=True,
+                        stop_builders=0
+                    )
+                    runtime_state["phase"] = "M15_SWITCH_ID"
+
+                if runtime_state["phase"] == "M15_SWITCH_ID":
+                    print(f"\n [MODE 15 | STEP 4/4] 2nd Full Upgrade complete! Turant Next ID par switch kar rahe hain...")
+                    smart_sleep(0.5, apply_speed=True)
+                    next_id = (active_id % total_ids) + 1
+                    switch_to_target_id(next_id, total_ids, current_id_index=active_id)
+                    runtime_state["current_id"] = next_id
+                    runtime_state["phase"] = "START_CYCLE"
+                    runtime_state["attacks_done"] = 0
+                    smart_sleep(0.5, apply_speed=True)
+
             save_current_progress_report()
             clean_ram_garbage()
             consecutive_loop_errors = 0
@@ -799,4 +854,3 @@ def main_loop():
 
 if __name__ == "__main__":
     main_loop()
-
